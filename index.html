@@ -422,6 +422,10 @@ function updateOpsTable() {
     lots = [...lots].sort((a,b) => {
       let av = a[sortCol]??'', bv = b[sortCol]??'';
       if (sortCol==='dev') { av=lotDev(a)??-999; bv=lotDev(b)??-999; }
+      if (sortCol==='date') {
+        const da = new Date(av), db = new Date(bv);
+        return (da-db)*sortDir;
+      }
       if (typeof av==='number'||!isNaN(parseFloat(av))) return (parseFloat(av)-parseFloat(bv))*sortDir;
       return String(av).localeCompare(String(bv))*sortDir;
     });
