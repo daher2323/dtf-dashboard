@@ -7,7 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, sans-serif; background: #141618; color: #e8e6e0; font-size: 14px; }
+  body { font-family: system-ui, sans-serif; background: #141618; color: #e8e6e0; font-size: 14px; min-height: 100vh; }
   .shell { max-width: 1400px; margin: 0 auto; padding: 1.5rem 1.5rem; }
   .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 12px; }
   .brand { display: flex; align-items: center; gap: 14px; }
@@ -55,6 +55,23 @@
 </style>
 </head>
 <body>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#141618;">
+  <div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:16px;padding:2.5rem 2rem;width:100%;max-width:360px;text-align:center">
+    <img src="DTF_Logo.png" alt="DTF" onerror="this.style.display='none'" style="height:54px;width:auto;background:#fff;border-radius:8px;padding:4px 8px;margin-bottom:1.5rem">
+    <div style="font-size:18px;font-weight:500;color:#e8e6e0;margin-bottom:4px">Dynamic Technical Formulations</div>
+    <div style="font-size:13px;color:#888780;margin-bottom:2rem">Production Dashboard</div>
+    <input id="pw-input" type="password" placeholder="Enter password"
+      onkeydown="if(event.key==='Enter')checkPw()"
+      style="width:100%;padding:10px 14px;border:0.5px solid #444441;border-radius:8px;background:#141618;color:#e8e6e0;font-size:14px;margin-bottom:10px;outline:none;display:block">
+    <button onclick="checkPw()" style="width:100%;padding:10px;background:#378ADD;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer">Sign in</button>
+    <div id="pw-error" style="color:#F09595;font-size:12px;margin-top:10px;display:none">Incorrect password. Please try again.</div>
+  </div>
+</div>
+
+<!-- MAIN DASHBOARD -->
+<div id="main-app" style="display:none">
 <div class="shell">
   <div class="top-bar">
     <div class="brand">
@@ -73,8 +90,10 @@
   <div id="loading" class="loading">Loading production data...</div>
   <div id="content" style="display:none"></div>
 </div>
+</div>
 
 <script>
+const CORRECT_PW = 'DTF2026!';
 const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0Vqunj5euX6ZRNwnYeF22UChTxiCd6gP_GVEiuFBeUo6o9c2Mc6Idt1pQkckhuyukmNJesy8_nZqX/pub?gid=943770391&single=true&output=csv";
 const YEAR_TARGET = 3927000;
 const WEEKLY_TARGET = Math.round(YEAR_TARGET / 52);
@@ -82,6 +101,27 @@ const WEEKLY_TARGET = Math.round(YEAR_TARGET / 52);
 let allRows = [], lotMap = {}, currentView = 'exec', sortCol = 'date', sortDir = -1, page = 1;
 const PAGE_SIZE = 50;
 let charts = {};
+
+function checkPw() {
+  var input = document.getElementById('pw-input').value;
+  if (input === CORRECT_PW) {
+    sessionStorage.setItem('dtf_auth', '1');
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('main-app').style.display = 'block';
+    loadDashboard();
+  } else {
+    document.getElementById('pw-error').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-input').focus();
+  }
+}
+
+// auto-login if already authenticated this session
+if (sessionStorage.getItem('dtf_auth') === '1') {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  loadDashboard();
+}
 
 function parseCSV(text) {
   const clean = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
@@ -157,26 +197,19 @@ function jarSizeKey(j) {
   return j;
 }
 
-function isPowderLine(line) {
-  var ln = (line||'').replace(/\s/g,'').toLowerCase();
-  return ln === 'line#1' || ln === 'line1' || ln === 'line#4' || ln === 'line4';
+function loadDashboard() {
+  fetch(CSV_URL)
+    .then(r => r.text())
+    .then(text => {
+      allRows = parseCSV(text).filter(isValid);
+      lotMap = buildLotMap(allRows);
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+      render();
+      setInterval(refreshData, 5 * 60 * 1000);
+    })
+    .catch(e => { document.getElementById('loading').textContent = 'Failed to load data: ' + e.message; });
 }
-function isCapsuleLine(line) {
-  var ln = (line||'').replace(/\s/g,'').toLowerCase();
-  return ln === 'line#2' || ln === 'line2';
-}
-
-fetch(CSV_URL)
-  .then(r => r.text())
-  .then(text => {
-    allRows = parseCSV(text).filter(isValid);
-    lotMap = buildLotMap(allRows);
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('content').style.display = 'block';
-    render();
-    setInterval(refreshData, 5 * 60 * 1000);
-  })
-  .catch(e => { document.getElementById('loading').textContent = 'Failed to load data: ' + e.message; });
 
 function refreshData() {
   fetch(CSV_URL).then(r => r.text()).then(text => {
@@ -219,13 +252,11 @@ function renderExec() {
   var devColor = avgDev < -2 ? '#EF9F27' : avgDev > 2 ? '#1D9E75' : '#e8e6e0';
   var devClass  = avgDev < -2 ? 'warn' : avgDev > 2 ? 'good' : '';
 
-  // date range
   var dates = allRows.map(function(r) { return new Date(r['Date']); }).filter(function(d) { return !isNaN(d); });
   var minDate = new Date(Math.min.apply(null, dates)), maxDate = new Date(Math.max.apply(null, dates));
   var fmt = function(d) { return (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear(); };
   if (dates.length) document.getElementById('data-range').textContent = 'Data: ' + fmt(minDate) + ' \u2013 ' + fmt(maxDate);
 
-  // year-end projection
   var now = new Date();
   var dayOfYear = Math.ceil((now - new Date(now.getFullYear(),0,1)) / 86400000);
   var yearProjected = Math.round((totalUnits / dayOfYear) * 365);
@@ -235,7 +266,6 @@ function renderExec() {
   var actualPct = yearProjected ? ((totalUnits / yearProjected) * 100) : 0;
   var targetOnBarPct = yearProjected ? ((YEAR_TARGET / yearProjected) * 100) : 100;
 
-  // monthly
   var byMonth = {};
   allRows.forEach(function(r) {
     var d = new Date(r['Date']);
@@ -256,7 +286,6 @@ function renderExec() {
     return { label: label, units: mo.units, target: target, fullMonthTarget: fullMonthTarget, pctOfTarget: pctOfTarget, isCurrentMonth: isCurrentMonth, daysInMonth: daysInMonth, daysSoFar: now.getDate() };
   });
 
-  // production lines — sum directly from allRows to match Google Sheets pivot
   var byLine = {};
   allRows.forEach(function(r) {
     var line = (r['Line']||'').trim();
@@ -272,7 +301,6 @@ function renderExec() {
   var lineTotal = lineEntries.reduce(function(s,e) { return s + e[1].units; }, 0);
   var lineColors = ['#1D9E75','#378ADD','#7F77DD','#EF9F27'];
 
-  // product type split — AFTER lineEntries is defined
   var powderUnits = 0, capsuleUnits = 0, l1units = 0, l2units = 0, l4units = 0;
   lineEntries.forEach(function(entry) {
     var line = entry[0], u = entry[1].units;
@@ -284,7 +312,6 @@ function renderExec() {
   var powderPct  = totalUnits ? ((powderUnits  / totalUnits) * 100).toFixed(1) : 0;
   var capsulePct = totalUnits ? ((capsuleUnits / totalUnits) * 100).toFixed(1) : 0;
 
-  // powder mix
   var byJar = {};
   lots.forEach(function(l) {
     var k = jarSizeKey(l.jarSize);
@@ -295,7 +322,6 @@ function renderExec() {
   var jarTotal = jarEntries.reduce(function(s,e) { return s+e[1]; }, 0);
   var JAR_COLORS = ['#378ADD','#1D9E75','#EF9F27','#D4537E','#7F77DD','#D85A30','#639922','#E24B4A','#85B7EB','#5DCAA5'];
 
-  // weekly
   var byWeek = {};
   allRows.forEach(function(r) {
     var w = (r['WEEK NUMBER']||'').trim();
@@ -316,7 +342,6 @@ function renderExec() {
   var weekColors = weeks.map(function(w) { return parseInt(w) === currentWeekNum ? 'rgba(55,138,221,0.35)' : '#378ADD'; });
   var weekLabels = weeks.map(function(w) { return parseInt(w) === currentWeekNum ? 'Week ' + w + ' (current)' : 'Week ' + w; });
 
-  // top 10 customers
   var byCust = {};
   lots.forEach(function(l) {
     var cust = (l.product||'').split('-')[0].trim();
@@ -328,7 +353,6 @@ function renderExec() {
   var top10Cust = Object.entries(byCust).sort(function(a,b) { return b[1].units - a[1].units; }).slice(0,10);
   var maxCustUnits = top10Cust[0] ? top10Cust[0][1].units : 1;
 
-  // ---- BUILD HTML ----
   var metricsHTML =
     '<div class="metric info"><div class="label">Units produced</div><div class="value">' + totalUnits.toLocaleString() + '</div><div class="sub">vs ' + totalProj.toLocaleString() + ' projected</div></div>'
     + '<div class="metric"><div class="label">Avg units / day</div><div class="value">' + avgUnitsPerDay.toLocaleString() + '</div><div class="sub">' + uniqueProductionDays + ' production days</div></div>'
@@ -363,20 +387,6 @@ function renderExec() {
     + '<div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#888780"><div style="width:10px;height:10px;border-radius:2px;background:#e8e6e0"></div>Year-end target</div>'
     + '</div>';
 
-  var linesHTML = lineEntries.map(function(entry, i) {
-    var line = entry[0], d = entry[1];
-    var sp = lineTotal ? ((d.units / lineTotal) * 100) : 0;
-    var bw = Math.round((d.units / maxLineUnits) * 100);
-    var col = lineColors[i % lineColors.length];
-    return '<tr style="border-bottom:0.5px solid #2c2c2a">'
-      + '<td style="padding:5px 8px;font-weight:500">' + line + '</td>'
-      + '<td style="padding:5px 8px;text-align:right;white-space:nowrap">' + d.units.toLocaleString() + '</td>'
-      + '<td style="padding:5px 8px"><div style="background:#2c2c2a;border-radius:3px;height:6px;overflow:hidden"><div style="height:100%;width:' + bw + '%;background:' + col + ';border-radius:3px"></div></div></td>'
-      + '<td style="padding:5px 8px;text-align:right;color:#888780">' + sp.toFixed(1) + '%</td>'
-      + '<td style="padding:5px 8px;text-align:right;color:#888780">' + d.lots.size.toLocaleString() + '</td>'
-      + '</tr>';
-  }).join('');
-
   var typeSplitHTML =
     '<div style="font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.6rem">Product type split</div>'
     + '<div style="display:flex;gap:10px;margin-bottom:1rem">'
@@ -396,6 +406,20 @@ function renderExec() {
     + '</div></div>'
     + '<div style="border-top:0.5px solid #2c2c2a;margin-bottom:.75rem"></div>'
     + '<div style="font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.6rem">Units by line breakdown</div>';
+
+  var linesHTML = lineEntries.map(function(entry, i) {
+    var line = entry[0], d = entry[1];
+    var sp = lineTotal ? ((d.units / lineTotal) * 100) : 0;
+    var bw = Math.round((d.units / maxLineUnits) * 100);
+    var col = lineColors[i % lineColors.length];
+    return '<tr style="border-bottom:0.5px solid #2c2c2a">'
+      + '<td style="padding:5px 8px;font-weight:500">' + line + '</td>'
+      + '<td style="padding:5px 8px;text-align:right;white-space:nowrap">' + d.units.toLocaleString() + '</td>'
+      + '<td style="padding:5px 8px"><div style="background:#2c2c2a;border-radius:3px;height:6px;overflow:hidden"><div style="height:100%;width:' + bw + '%;background:' + col + ';border-radius:3px"></div></div></td>'
+      + '<td style="padding:5px 8px;text-align:right;color:#888780">' + sp.toFixed(1) + '%</td>'
+      + '<td style="padding:5px 8px;text-align:right;color:#888780">' + d.lots.size.toLocaleString() + '</td>'
+      + '</tr>';
+  }).join('');
 
   var monthTableHTML = monthRows.map(function(m) {
     var isGreen  = m.pctOfTarget >= 100;
@@ -450,27 +474,22 @@ function renderExec() {
 
   document.getElementById('content').innerHTML =
     '<div class="metrics">' + metricsHTML + '</div>'
-
     + '<div class="full-card"><h3>Year-end projection vs target</h3>' + yearEndHTML + '</div>'
-
     + '<div class="charts-row">'
-    + '<div class="chart-card">'
-    + typeSplitHTML
+    + '<div class="chart-card">' + typeSplitHTML
     + '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>'
     + '<th style="text-align:left;padding:4px 8px;color:#888780;font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid #2c2c2a">Line</th>'
     + '<th style="text-align:right;padding:4px 8px;color:#888780;font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid #2c2c2a">Units</th>'
     + '<th style="border-bottom:0.5px solid #2c2c2a"></th>'
     + '<th style="text-align:right;padding:4px 8px;color:#888780;font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid #2c2c2a">% of total</th>'
     + '<th style="text-align:right;padding:4px 8px;color:#888780;font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid #2c2c2a">Lots run</th>'
-    + '</tr></thead><tbody>' + linesHTML + '</tbody></table>'
-    + '</div>'
+    + '</tr></thead><tbody>' + linesHTML + '</tbody></table></div>'
     + '<div class="chart-card"><h3>Powder product mix \u2014 units by jar size</h3>'
     + '<div style="display:flex;align-items:center;gap:12px">'
     + '<div style="position:relative;height:200px;min-width:200px;flex-shrink:0"><canvas id="cJar"></canvas></div>'
     + '<div id="jar-legend" style="flex:1;overflow-y:auto"></div>'
     + '</div></div>'
     + '</div>'
-
     + '<div class="chart-card" style="margin-bottom:10px">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:8px">'
     + '<h3 style="margin:0">Weekly units produced \u2014 last 8 weeks</h3>'
@@ -479,11 +498,9 @@ function renderExec() {
     + '<span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:20px;border-top:2px dashed #1D9E75"></span>Weekly target: ' + WEEKLY_TARGET.toLocaleString() + '</span>'
     + '</div></div>'
     + '<div style="position:relative;height:240px"><canvas id="cWeekly"></canvas></div></div>'
-
     + '<div class="full-card"><h3>Units produced by month vs. target</h3><div class="tbl-wrap"><table>'
     + '<thead><tr><th>Month</th><th style="text-align:right">Actual</th><th style="text-align:right">Target</th><th style="text-align:right">% of target</th><th></th></tr></thead>'
     + '<tbody>' + monthTableHTML + '</tbody></table>' + asteriskNote + '</div></div>'
-
     + '<div class="full-card"><h3>Top 10 customers by units produced</h3><div class="tbl-wrap"><table>'
     + '<thead><tr><th style="width:24px">#</th><th>Customer</th><th style="text-align:right">Units produced</th><th style="width:90px"></th><th style="text-align:right">Lots</th><th style="text-align:right">Avg run size</th><th style="text-align:right">% of production</th></tr></thead>'
     + '<tbody>' + custHTML + '</tbody></table></div></div>';
@@ -647,7 +664,7 @@ function updateOpsTable() {
   var pi=document.getElementById('pageInfo'),pb=document.getElementById('prevBtn'),nb=document.getElementById('nextBtn'),rc=document.getElementById('rowCount');
   if(pi) pi.textContent='Page '+page+' of '+totalPages;
   if(pb) pb.disabled=page<=1;
-  if(nb) nb.disabled=page>=totalPages;
+  if(nb) pb.disabled=page>=totalPages;
   if(rc) rc.textContent=total.toLocaleString()+' lots';
 }
 </script>
