@@ -395,13 +395,13 @@ function renderExec() {
     + '</div>'
 
     + '<div class="charts-row">'
-    + '<div class="chart-card"><h3>Top products by units produced</h3><div id="top-prods-table" style="overflow-y:auto;max-height:260px"></div></div>'
+    + '<div class="chart-card"><h3>Production lines breakdown</h3><div id="lines-chart-table" style="overflow-y:auto;max-height:260px"></div></div>'
     + '<div class="chart-card"><h3>Powder product mix \u2014 units by jar size</h3><div style="position:relative;height:180px"><canvas id="cJar"></canvas></div><div id="jar-legend" style="margin-top:8px;overflow-y:auto;max-height:120px"></div></div>'
     + '</div>'
 
     + '<div class="chart-card" style="margin-bottom:1rem"><h3>Weekly units produced \u2014 last 6 weeks</h3><div style="position:relative;height:200px"><canvas id="cWeekly"></canvas></div></div>'
 
-    + '<div class="full-card"><h3>Production lines breakdown</h3><div class="tbl-wrap"><table><thead><tr>'
+        + '<div class="full-card"><h3>Production lines breakdown</h3><div class="tbl-wrap"><table><thead><tr>'
     + '<th>Line</th><th style="text-align:right">Units produced</th><th style="min-width:140px"></th><th style="text-align:right">% of total</th><th style="text-align:right">Lots run</th>'
     + '</tr></thead><tbody>' + lineRowsHTML + '</tbody></table></div></div>'
 
@@ -413,13 +413,27 @@ function renderExec() {
     + '<th>Product</th><th style="text-align:right">Lots</th><th style="text-align:right">Projected</th><th style="text-align:right">Units produced</th><th style="text-align:right">Avg deviation</th>'
     + '</tr></thead><tbody>' + top10HTML + '</tbody></table></div></div>';
 
-  document.getElementById('top-prods-table').innerHTML =
+  document.getElementById('lines-chart-table').innerHTML =
     '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>'
-    + '<th style="text-align:left;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1))">#</th>'
-    + '<th style="text-align:left;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1))">Product</th>'
+    + '<th style="text-align:left;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1))">Line</th>'
     + '<th style="text-align:right;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1))">Units</th>'
-    + '<th style="border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1));width:80px"></th>'
-    + '</tr></thead><tbody>' + topProdsHTML + '</tbody></table>';
+    + '<th style="border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1))"></th>'
+    + '<th style="text-align:right;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1))">% of total</th>'
+    + '<th style="text-align:right;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1))">Lots run</th>'
+    + '</tr></thead><tbody>'
+    + lineEntries.map(function(entry) {
+        var line = entry[0], d = entry[1];
+        var sp = lineTotal ? ((d.units / lineTotal) * 100) : 0;
+        var bw = Math.round((d.units / maxLineUnits) * 100);
+        return '<tr style="border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.06))">'
+          + '<td style="padding:5px 8px;font-weight:500">' + line + '</td>'
+          + '<td style="padding:5px 8px;text-align:right;white-space:nowrap">' + d.units.toLocaleString() + '</td>'
+          + '<td style="padding:5px 8px"><div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:6px;overflow:hidden"><div style="height:100%;width:' + bw + '%;background:#1D9E75;border-radius:3px"></div></div></td>'
+          + '<td style="padding:5px 8px;text-align:right;color:var(--color-text-secondary,#666)">' + sp.toFixed(1) + '%</td>'
+          + '<td style="padding:5px 8px;text-align:right;color:var(--color-text-secondary,#666)">' + d.lots.size.toLocaleString() + '</td>'
+          + '</tr>';
+      }).join('')
+    + '</tbody></table>';
 
   document.getElementById('jar-legend').innerHTML =
     '<table style="width:100%;border-collapse:collapse;font-size:11px"><tbody>' + jarLegendHTML + '</tbody></table>';
