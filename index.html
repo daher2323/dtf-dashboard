@@ -351,11 +351,11 @@ function renderExec() {
         <tbody>${lineEntries.map(([line,d]) => {
           const sp = lineTotal ? ((d.units/lineTotal)*100) : 0;
           const bw = Math.round((d.units/maxLineUnits)*100);
-          const daysWithData = d.dates ? d.dates.size : 0;
+          const daysWithData = d.dates.size;
           const avgPerDay = daysWithData ? Math.round(d.units / daysWithData) : null;
           return `<tr>
             <td style="font-weight:500">${line}</td>
-            <td style="text-align:right;color:var(--color-text-secondary,#666)">${avgPerDay !== null ? avgPerDay.toLocaleString() : '—'}</td>
+            <td style="text-align:right;color:var(--color-text-secondary,#666)">${avgPerDay !== null ? avgPerDay.toLocaleString() : '—'} <span style="font-size:10px;color:#a32d2d">[${daysWithData}d / ${d.units}u]</span></td>
             <td style="text-align:right;white-space:nowrap">${d.units.toLocaleString()}</td>
             <td style="padding:6px 10px">
               <div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:6px;overflow:hidden">
