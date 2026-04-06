@@ -320,7 +320,7 @@ function renderExec() {
       </div>
       <div class="chart-card">
         <h3>Powder product mix — units by jar size</h3>
-        <div id="jar-table" style="overflow-y:auto;max-height:260px"></div>
+        <div style="position:relative;height:260px"><canvas id="cJar"></canvas></div>
       </div>
     </div>
 
@@ -436,31 +436,56 @@ function renderExec() {
     </table>`;
 
   const maxJarUnits = jarEntries[0]?.[1] || 1;
-  document.getElementById('jar-table').innerHTML = `
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr>
-        <th style="text-align:left;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1));width:70px">Size</th>
-        <th style="padding:4px 8px;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1))"></th>
-        <th style="text-align:right;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1));white-space:nowrap">Units</th>
-        <th style="text-align:right;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1));width:48px">%</th>
-      </tr></thead>
-      <tbody>${jarEntries.map(([j,v]) => {
-        const bw = Math.round((v/maxJarUnits)*100);
-        const sharePct = jarTotal ? ((v/jarTotal)*100) : 0;
-        return `<tr style="border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.06))">
-          <td style="padding:5px 8px;font-weight:500;white-space:nowrap">${j}</td>
-          <td style="padding:5px 8px">
-            <div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:8px;overflow:hidden;min-width:80px">
-              <div style="height:100%;width:${bw}%;background:#378ADD;border-radius:3px"></div>
-            </div>
-          </td>
-          <td style="padding:5px 8px;text-align:right;white-space:nowrap">${v.toLocaleString()}</td>
-          <td style="padding:5px 8px;text-align:right;color:var(--color-text-secondary,#666);white-space:nowrap">${sharePct.toFixed(1)}%</td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table>`;
+  charts.jar = new Chart(document.getElementById('cJar'), {
+    type: 'bar',
+    data: {
+      labels: jarEntries.map(([j]) => j),
+      datasets: [{
+        data: jarEntries.map(([,v]) => v),
+        backgroundColor: '#378ADD',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.raw;
+              const p = jarTotal ? ((v/jarTotal)*100).toFixed(1) : 0;
+              return `${v.toLocaleString()} units (${p}%)`;
+            }
+          }
+        },
+        datalabels: { display: false }
+      },
+      scales: {
+        x: { ticks: { font: { size: 10 } } },
+        y: { ticks: { callback: v => v >= 1000 ? `${(v/1000).toFixed(0)}k` : v } }
+      },
+      animation: {
+        onComplete: function() {
+          const chart = this;
+          const ctx = chart.ctx;
+          ctx.font = '10px system-ui';
+          ctx.fillStyle = 'rgba(100,100,100,0.85)';
+          ctx.textAlign = 'center';
+          chart.data.datasets.forEach((dataset, i) => {
+            chart.getDatasetMeta(i).data.forEach((bar, idx) => {
+              const v = dataset.data[idx];
+              const p = jarTotal ? ((v/jarTotal)*100).toFixed(1) : 0;
+              ctx.fillText(`${p}%`, bar.x, bar.y - 4);
+            });
+          });
+        }
+      }
+    }
+  });
 
-  if (charts.jar) { try{charts.jar.destroy();}catch(e){} delete charts.jar; }
+  if (charts.jarTable) { try{charts.jarTable.destroy();}catch(e){} delete charts.jarTable; }
 
   charts.weekly = new Chart(document.getElementById('cWeekly'),{
     type:'bar',
