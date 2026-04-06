@@ -165,6 +165,8 @@ fetch(CSV_URL)
     allRows = parseCSV(text).filter(isValid);
     const built = buildLotMap(allRows);
     lotMap = built.lotMap;
+    // remove any null/undefined entries
+    Object.keys(lotMap).forEach(k => { if (!lotMap[k]) delete lotMap[k]; });
     window._lineDateSets = built.lineDateSets;
     document.getElementById('loading').style.display = 'none';
     document.getElementById('content').style.display = 'block';
