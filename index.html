@@ -215,13 +215,18 @@ function renderExec() {
     const j = (l.jarSize||'').trim();
     if (!j) return;
     // extract just the size portion: leading number+unit e.g. "25oz", "70oz", "400cc", "1gal"
-    const sizeMatch = j.match(/^(\d+(?:\.\d+)?)\s*(oz|cc|ml|lb|gal|g)\b/i);
+    const sizeMatch = j.match(/^(\d+(?:\.\d+)?)\s*(oz|cc|ml|lb|gal|g)\b/i)
+                   || j.match(/^(\d+(?:\.\d+)?)\s*gallon/i);
     let displayKey = j;
     if (sizeMatch) {
-      const n = sizeMatch[1], u = sizeMatch[2].toLowerCase();
-      if (u === 'g') displayKey = `${n} Gal`;
-      else if (u === 'gal') displayKey = `${n} Gal`;
+      const n = sizeMatch[1];
+      const u = (sizeMatch[2]||'gallon').toLowerCase();
+      if (u === 'g' || u === 'gal' || u === 'gallon') displayKey = `${n} Gallon`;
       else displayKey = `${n}${u}`;
+    } else if (/gallon/i.test(j)) {
+      // e.g. "1 Gallon White HDPE" — extract leading number + Gallon
+      const gm = j.match(/(\d+(?:\.\d+)?)\s*gallon/i);
+      displayKey = gm ? `${gm[1]} Gallon` : j;
     }
     if (!byJar[displayKey]) byJar[displayKey] = 0;
     byJar[displayKey] += l.finalUnits;
