@@ -82,8 +82,10 @@ const PAGE_SIZE = 50;
 let charts = {};
 
 function parseCSV(text) {
-  const lines = text.trim().split('\n');
-  const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g,'').trim());
+  // strip BOM if present
+  const clean = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+  const lines = clean.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g,'').trim().replace(/^\uFEFF/,''));
   return lines.slice(1).map(line => {
     const vals = []; let cur = '', inQ = false;
     for (let c of line) {
