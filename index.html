@@ -249,8 +249,25 @@ function renderExec() {
     .filter(w => byWeek[w] > 0)
     .slice(-6);
 
-  const devColor = avgDev < -2 ? '#a32d2d' : avgDev > 2 ? '#3b6d11' : 'inherit';
-  const devClass = avgDev < -2 ? 'warn' : avgDev > 2 ? 'good' : '';
+  // --- Monthly units vs target table ---
+  const YEAR_TARGET_2 = 3927000;
+  const byMonth = {};
+  allRows.forEach(r => {
+    const d = new Date(r['Date']);
+    if (isNaN(d)) return;
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if (!byMonth[key]) byMonth[key] = { year: d.getFullYear(), month: d.getMonth()+1, units: 0 };
+    byMonth[key].units += num(r['Final Units']);
+  });
+  const monthRows = Object.keys(byMonth).sort().map(k => {
+    const { year, month, units } = byMonth[k];
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const daysInYear = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365;
+    const target = Math.round((daysInMonth / daysInYear) * YEAR_TARGET_2);
+    const pctOfTarget = target ? ((units / target) * 100) : 0;
+    const label = new Date(year, month-1, 1).toLocaleDateString('en-US', { month:'2-digit', year:'numeric' }).replace('/','/');;
+    return { label, units, target, pctOfTarget };
+  });
 
   // --- Year-end projection ---
   const YEAR_TARGET = 3927000;
@@ -289,6 +306,38 @@ function renderExec() {
         <div class="value">${uniqueProds}</div>
         <div class="sub">across all lots</div>
       </div>
+    </div>
+
+    <div class="full-card" style="margin-bottom:1rem">
+      <h3>Units produced by month vs. target</h3>
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th style="text-align:left;padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--color-text-secondary,#666);border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15));font-weight:500">Month</th>
+          <th style="text-align:right;padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--color-text-secondary,#666);border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15));font-weight:500">Actual</th>
+          <th style="text-align:right;padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--color-text-secondary,#666);border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15));font-weight:500">Target</th>
+          <th style="text-align:right;padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--color-text-secondary,#666);border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15));font-weight:500">% of target</th>
+          <th style="padding:6px 10px;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15))"></th>
+        </tr></thead>
+        <tbody>
+          ${monthRows.map(m => {
+            const over = m.pctOfTarget >= 100;
+            const pctColor = over ? '#3b6d11' : '#a32d2d';
+            const barW = Math.min(Math.round(m.pctOfTarget), 100);
+            return `<tr style="border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.06))">
+              <td style="padding:6px 10px;font-weight:500">${m.label}</td>
+              <td style="padding:6px 10px;text-align:right">${m.units.toLocaleString()}</td>
+              <td style="padding:6px 10px;text-align:right;color:var(--color-text-secondary,#666)">${m.target.toLocaleString()}</td>
+              <td style="padding:6px 10px;text-align:right;font-weight:500;color:${pctColor}">${m.pctOfTarget.toFixed(2)}%</td>
+              <td style="padding:6px 10px;width:100px">
+                <div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:6px;overflow:hidden;position:relative">
+                  <div style="height:100%;width:${barW}%;background:${over?'#639922':'#a32d2d'};border-radius:3px"></div>
+                  <div style="position:absolute;top:0;left:0;height:100%;width:1px;left:100%;background:rgba(0,0,0,.2)"></div>
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>
     </div>
 
     <div class="full-card" style="margin-bottom:1rem">
