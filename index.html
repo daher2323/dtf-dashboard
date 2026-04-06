@@ -329,29 +329,29 @@ function renderExec() {
       <div style="position:relative;height:200px"><canvas id="cWeekly"></canvas></div>
     </div>
 
-    <div class="full-card">
+          <div class="full-card">
       <h3>Production lines breakdown</h3>
       <div class="tbl-wrap"><table>
         <thead><tr>
           <th>Line</th>
           <th style="text-align:right">Units produced</th>
+          <th style="min-width:140px"></th>
           <th style="text-align:right">% of total</th>
           <th style="text-align:right">Lots run</th>
-          <th></th>
         </tr></thead>
         <tbody>${lineEntries.map(([line,d]) => {
           const sp = lineTotal ? ((d.units/lineTotal)*100) : 0;
           const bw = Math.round((d.units/maxLineUnits)*100);
           return `<tr>
             <td style="font-weight:500">${line}</td>
-            <td style="text-align:right">${d.units.toLocaleString()}</td>
-            <td style="text-align:right;color:var(--color-text-secondary,#666)">${sp.toFixed(1)}%</td>
-            <td style="text-align:right;color:var(--color-text-secondary,#666)">${d.lots.size.toLocaleString()}</td>
-            <td style="min-width:120px;padding:6px 10px">
+            <td style="text-align:right;white-space:nowrap">${d.units.toLocaleString()}</td>
+            <td style="padding:6px 10px">
               <div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:6px;overflow:hidden">
                 <div style="height:100%;width:${bw}%;background:#1D9E75;border-radius:3px"></div>
               </div>
             </td>
+            <td style="text-align:right;color:var(--color-text-secondary,#666)">${sp.toFixed(1)}%</td>
+            <td style="text-align:right;color:var(--color-text-secondary,#666)">${d.lots.size.toLocaleString()}</td>
           </tr>`;
         }).join('')}</tbody>
       </table></div>
