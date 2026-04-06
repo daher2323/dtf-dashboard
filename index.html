@@ -270,7 +270,7 @@ function renderExec() {
     const na = parseInt(a[0].replace(/\D/g,'')), nb = parseInt(b[0].replace(/\D/g,''));
     return na - nb;
   });
-  const maxLineUnits = lineEntries[0]?.[1].units || 1;
+  const maxLineUnits = lineEntries[0]?.[1]?.units || 1;
   const lineTotal = lineEntries.reduce((s,[,d])=>s+d.units,0);
 
   // Product performance table
@@ -344,7 +344,7 @@ function renderExec() {
         <tbody>${lineEntries.map(([line,d]) => {
           const sp = lineTotal ? ((d.units/lineTotal)*100) : 0;
           const bw = Math.round((d.units/maxLineUnits)*100);
-          const daysWithData = d.dates.size;
+          const daysWithData = d.dates ? d.dates.size : 0;
           const avgPerDay = daysWithData ? Math.round(d.units / daysWithData) : 0;
           return `<tr>
             <td style="font-weight:500">${line}</td>
