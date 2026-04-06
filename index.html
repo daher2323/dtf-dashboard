@@ -346,7 +346,7 @@ function renderExec() {
         <tbody>${lineEntries.map(([line,d]) => {
           const sp = lineTotal ? ((d.units/lineTotal)*100) : 0;
           const bw = Math.round((d.units/maxLineUnits)*100);
-          const daysWithData = lineDates[line] ? lineDates[line].size : 0;
+          const daysWithData = d.dates ? d.dates.size : 0;
           const avgPerDay = daysWithData ? Math.round(d.units / daysWithData) : null;
           return `<tr>
             <td style="font-weight:500">${line}</td>
