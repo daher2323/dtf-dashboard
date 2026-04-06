@@ -335,11 +335,11 @@ function renderExec() {
       <div class="tbl-wrap"><table>
         <thead><tr>
           <th>Line</th>
+          <th style="text-align:right">Avg units/day</th>
           <th style="text-align:right">Units produced</th>
           <th style="min-width:140px"></th>
           <th style="text-align:right">% of total</th>
           <th style="text-align:right">Lots run</th>
-          <th style="text-align:right">Avg units/day</th>
         </tr></thead>
         <tbody>${lineEntries.map(([line,d]) => {
           const sp = lineTotal ? ((d.units/lineTotal)*100) : 0;
@@ -348,6 +348,7 @@ function renderExec() {
           const avgPerDay = daysWithData ? Math.round(d.units / daysWithData) : 0;
           return `<tr>
             <td style="font-weight:500">${line}</td>
+            <td style="text-align:right;color:var(--color-text-secondary,#666)">${avgPerDay.toLocaleString()}</td>
             <td style="text-align:right;white-space:nowrap">${d.units.toLocaleString()}</td>
             <td style="padding:6px 10px">
               <div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:6px;overflow:hidden">
@@ -356,7 +357,6 @@ function renderExec() {
             </td>
             <td style="text-align:right;color:var(--color-text-secondary,#666)">${sp.toFixed(1)}%</td>
             <td style="text-align:right;color:var(--color-text-secondary,#666)">${d.lots.size.toLocaleString()}</td>
-            <td style="text-align:right;color:var(--color-text-secondary,#666)">${avgPerDay.toLocaleString()}</td>
           </tr>`;
         }).join('')}</tbody>
       </table></div>
