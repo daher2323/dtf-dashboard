@@ -145,7 +145,21 @@ function buildLotMap(rows) {
   return m;
 }
 
-function lotDev(l) {
+function statusOrder(s) {
+  const v = (s||'').toLowerCase();
+  if (!v) return 0;
+  if (v.includes('partial')) return 1;
+  if (v.includes('complete')) return 2;
+  return 0;
+}
+
+function defaultSort(lots) {
+  return [...lots].sort((a,b) => {
+    const dateDiff = new Date(b.date) - new Date(a.date);
+    if (dateDiff !== 0) return dateDiff;
+    return statusOrder(a.status) - statusOrder(b.status);
+  });
+}
   if (!l || !l.projected) return null;
   return ((l.finalUnits - l.projected) / l.projected) * 100;
 }
@@ -390,8 +404,9 @@ function renderExec() {
         </tr></thead>
         <tbody>${monthRows.map(m => {
           const over = m.pctOfTarget >= 100;
-          const pc = over?'#3b6d11':'#a32d2d';
-          const bw = Math.min(Math.round(m.pctOfTarget),100);
+          const warn = m.pctOfTarget >= 80;
+          const pc = over ? '#3b6d11' : warn ? '#854f0b' : '#a32d2d';
+          const barColor = over ? '#639922' : warn ? '#EF9F27' : '#a32d2d';
           const targetLabel = m.isCurrentMonth
             ? `${m.target.toLocaleString()} <span style="font-size:10px;color:var(--color-text-tertiary,#999)">(${m.daysSoFar}/${m.daysInMonth} days)</span>`
             : m.target.toLocaleString();
@@ -402,7 +417,7 @@ function renderExec() {
             <td style="text-align:right;font-weight:500;color:${pc}">${m.pctOfTarget.toFixed(2)}%</td>
             <td style="min-width:100px;padding:6px 10px">
               <div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:6px;overflow:hidden">
-                <div style="height:100%;width:${bw}%;background:${over?'#639922':'#a32d2d'};border-radius:3px"></div>
+                <div style="height:100%;width:${Math.min(Math.round(m.pctOfTarget),100)}%;background:${barColor};border-radius:3px"></div>
               </div>
             </td>
           </tr>`;
