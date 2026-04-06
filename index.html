@@ -325,13 +325,12 @@ function renderExec() {
   var monthTableHTML = monthRows.map(function(m) {
     var isGreen  = m.pctOfTarget >= 100;
     var isYellow = m.pctOfTarget >= 80 && m.pctOfTarget < 100;
-    var textColor = isGreen ? '#1D9E75' : isYellow ? '#EF9F27' : '#E24B4A';
     var pillBg    = isGreen ? '#0F6E56' : isYellow ? '#633806' : '#791F1F';
     var pillText  = isGreen ? '#9FE1CB' : isYellow ? '#FAC775' : '#F09595';
     var barColor  = isGreen ? '#1D9E75' : isYellow ? '#EF9F27' : '#E24B4A';
     var bw = Math.min(Math.round(m.pctOfTarget), 100);
     var targetLabel = m.isCurrentMonth
-      ? m.target.toLocaleString() + ' <span style="font-size:10px;color:#5f5e5a">(' + m.daysSoFar + '/' + m.daysInMonth + ' days)</span>'
+      ? m.target.toLocaleString() + '<sup style="color:#9FE1CB;font-size:9px"> *</sup>'
       : m.target.toLocaleString();
     return '<tr>'
       + '<td style="font-weight:500;color:#e8e6e0">' + m.label + '</td>'
@@ -341,6 +340,12 @@ function renderExec() {
       + '<td style="min-width:100px;padding:6px 10px"><div style="background:#2c2c2a;border-radius:3px;height:6px;overflow:hidden"><div style="height:100%;width:' + bw + '%;background:' + barColor + ';border-radius:3px"></div></div></td>'
       + '</tr>';
   }).join('');
+
+  var currentMonthRow = monthRows.find(function(m) { return m.isCurrentMonth; });
+  var fullMonthTarget = currentMonthRow ? Math.round((new Date(now.getFullYear(), now.getMonth()+1, 0).getDate() / ((now.getFullYear()%4===0&&(now.getFullYear()%100!==0||now.getFullYear()%400===0))?366:365)) * YEAR_TARGET) : 0;
+  var asteriskNote = currentMonthRow
+    ? '<div style="font-size:10px;color:#5f5e5a;margin-top:10px;padding-top:8px;border-top:0.5px solid #2c2c2a"><sup style="color:#9FE1CB">*</sup> ' + currentMonthRow.label + ' target adjusted for month-to-date (' + currentMonthRow.daysSoFar + '/' + currentMonthRow.daysInMonth + ' days). Full month target: ' + fullMonthTarget.toLocaleString() + '.</div>'
+    : '';
 
   var linesTableHTML = lineEntries.map(function(entry, i) {
     var line = entry[0], d = entry[1];
@@ -403,7 +408,7 @@ function renderExec() {
 
     + '<div class="full-card"><h3>Units produced by month vs. target</h3><div class="tbl-wrap"><table>'
     + '<thead><tr><th>Month</th><th style="text-align:right">Actual</th><th style="text-align:right">Target</th><th style="text-align:right">% of target</th><th></th></tr></thead>'
-    + '<tbody>' + monthTableHTML + '</tbody></table></div></div>'
+    + '<tbody>' + monthTableHTML + '</tbody></table>' + asteriskNote + '</div></div>'
 
     + '<div class="full-card"><h3>Product performance \u2014 top 10 by volume</h3><div class="tbl-wrap"><table>'
     + '<thead><tr><th>Product</th><th style="text-align:right">Lots</th><th style="text-align:right">Projected</th><th style="text-align:right">Units produced</th><th style="text-align:right">Avg deviation</th></tr></thead>'
