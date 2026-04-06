@@ -28,16 +28,14 @@
   .metric.warn .value { color: #a32d2d; }
   .metric.info .value { color: #185fa5; }
   .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
-  .charts-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
   .chart-card { background: var(--color-background-primary, #fff); border: 0.5px solid var(--color-border-tertiary, rgba(0,0,0,.15)); border-radius: 12px; padding: 1rem; }
-  .chart-card.span2 { grid-column: span 2; }
   .chart-card h3 { font-size: 12px; font-weight: 500; color: var(--color-text-secondary, #666); margin-bottom: .75rem; text-transform: uppercase; letter-spacing: .04em; }
   .full-card { background: var(--color-background-primary, #fff); border: 0.5px solid var(--color-border-tertiary, rgba(0,0,0,.15)); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; }
   .full-card h3 { font-size: 12px; font-weight: 500; color: var(--color-text-secondary, #666); margin-bottom: .75rem; text-transform: uppercase; letter-spacing: .04em; }
   .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1rem; }
   .filters select, .filters input { padding: 6px 10px; border: 0.5px solid var(--color-border-secondary, rgba(0,0,0,.3)); border-radius: 8px; background: var(--color-background-primary, #fff); color: var(--color-text-primary, #1a1a1a); font-size: 13px; }
   .tbl-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 700px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
   thead th { text-align: left; padding: 6px 10px; border-bottom: 0.5px solid var(--color-border-tertiary, rgba(0,0,0,.15)); color: var(--color-text-secondary, #666); font-weight: 500; white-space: nowrap; cursor: pointer; user-select: none; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
   thead th:hover { color: var(--color-text-primary, #1a1a1a); }
   tbody tr { border-bottom: 0.5px solid var(--color-border-tertiary, rgba(0,0,0,.06)); }
@@ -52,15 +50,14 @@
   .pagination { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; color: var(--color-text-secondary, #666); }
   .pagination button { padding: 4px 10px; border: 0.5px solid var(--color-border-secondary, rgba(0,0,0,.3)); border-radius: 6px; background: transparent; cursor: pointer; font-size: 12px; color: var(--color-text-primary, #1a1a1a); }
   .pagination button:disabled { opacity: .4; cursor: default; }
-  .divider { border: none; border-top: 0.5px solid var(--color-border-tertiary, rgba(0,0,0,.1)); margin: 1.25rem 0; }
-  @media (max-width: 700px) { .charts-row, .charts-row-3 { grid-template-columns: 1fr; } .chart-card.span2 { grid-column: span 1; } }
+  @media (max-width: 700px) { .charts-row { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <div class="shell">
   <div class="top-bar">
     <div class="brand">
-      <img src="https://i.imgur.com/placeholder.png" id="logo-img" alt="DTF Logo" onerror="this.style.display='none'">
+      <img src="DTF_Logo.png" alt="DTF Logo" onerror="this.style.display='none'">
       <div class="brand-text">
         <div class="brand-name">Dynamic Technical Formulations</div>
         <div class="brand-sub">Production Dashboard</div>
@@ -78,7 +75,7 @@
 
 <script>
 const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0Vqunj5euX6ZRNwnYeF22UChTxiCd6gP_GVEiuFBeUo6o9c2Mc6Idt1pQkckhuyukmNJesy8_nZqX/pub?gid=943770391&single=true&output=csv";
-const LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/DTF_logo.png/200px-DTF_logo.png"; // will be replaced
+const YEAR_TARGET = 3927000;
 
 let allRows = [], lotMap = {}, currentView = 'exec', sortCol = null, sortDir = 1, page = 1;
 const PAGE_SIZE = 50;
@@ -113,7 +110,6 @@ function num(v) {
 }
 function pct(a,b) { return b ? Math.round((a/b)*100) : 0; }
 
-// Build lot-level rollup: sum Final Units per Lot Number
 function buildLotMap(rows) {
   const m = {};
   rows.forEach(r => {
@@ -126,14 +122,12 @@ function buildLotMap(rows) {
         finalUnits: 0,
         status: r['Complete or Partial'] || '',
         week: r['WEEK NUMBER'] || '', monYr: r['MON-YR'] || '',
+        line: r['Line'] || '',
         induction: r['Induction Setting'] || '', beltSpeed: r['Belt Speed'] || '',
-        lidSize: r['Lid Size'] || '', desiccant: r['Desiccant'] || '',
-        rows: 0
+        lidSize: r['Lid Size'] || '', desiccant: r['Desiccant'] || ''
       };
     }
     m[lot].finalUnits += num(r['Final Units']);
-    m[lot].rows++;
-    // use most recent status if set
     if (r['Complete or Partial']) m[lot].status = r['Complete or Partial'];
   });
   return m;
@@ -144,375 +138,305 @@ function lotDev(l) {
   return ((l.finalUnits - l.projected) / l.projected) * 100;
 }
 
+function jarSizeKey(j) {
+  if (!j) return null;
+  j = j.trim();
+  const galMatch = j.match(/(\d+(?:\.\d+)?)\s*gallon/i);
+  if (galMatch) return `${galMatch[1]} Gallon`;
+  const unitMatch = j.match(/^(\d+(?:\.\d+)?)\s*(oz|cc|ml|lb|gal|g)\b/i);
+  if (unitMatch) {
+    const n = unitMatch[1], u = unitMatch[2].toLowerCase();
+    if (u === 'g' || u === 'gal') return `${n} Gallon`;
+    return `${n}${u}`;
+  }
+  return j;
+}
+
 fetch(CSV_URL)
   .then(r => r.text())
   .then(text => {
-    const parsed = parseCSV(text);
-    allRows = parsed.filter(isValid);
+    allRows = parseCSV(text).filter(isValid);
     lotMap = buildLotMap(allRows);
-    // load logo from user's uploaded image via base64 if available
     document.getElementById('loading').style.display = 'none';
     document.getElementById('content').style.display = 'block';
-    loadLogo();
     render();
   })
   .catch(e => { document.getElementById('loading').textContent = 'Failed to load data: ' + e.message; });
-
-// Embed the uploaded logo as base64
-function loadLogo() {
-  // The user uploaded a logo — embed it as a data URL
-  // We'll use a canvas trick to read the image they shared
-  // For now set alt text; in GitHub Pages deployment replace src with actual logo file path
-  const img = document.getElementById('logo-img');
-        img.src = "DTF_Logo.png";
-  img.style.display = 'block';
-}
 
 function setView(v) {
   currentView = v;
   document.querySelectorAll('.view-toggle button').forEach((b,i) => b.classList.toggle('active',(i===0&&v==='exec')||(i===1&&v==='ops')));
   render();
 }
+
 function render() {
   Object.values(charts).forEach(c => { try{c.destroy();}catch(e){} });
   charts = {};
-  currentView === 'exec' ? renderExec() : renderOps();
+  try {
+    currentView === 'exec' ? renderExec() : renderOps();
+  } catch(e) {
+    document.getElementById('content').innerHTML = `<div style="padding:2rem;color:#a32d2d">Error rendering dashboard: ${e.message}</div>`;
+    console.error(e);
+  }
 }
 
 function renderExec() {
   const lots = Object.values(lotMap);
   const completeLots = lots.filter(l => l.status.toLowerCase().includes('complete'));
   const partialLots  = lots.filter(l => l.status.toLowerCase().includes('partial'));
-
-  const totalUnits    = lots.reduce((s,l) => s + l.finalUnits, 0);
-  const totalProj     = lots.reduce((s,l) => s + l.projected, 0);
-  const uniqueProds   = new Set(lots.map(l => l.product)).size;
-  const totalLots     = lots.length;
-
-  // Avg lot deviation (scrap rate proxy)
-  const devs = lots.map(l => lotDev(l)).filter(d => d !== null);
-  const avgDev = devs.length ? (devs.reduce((s,d)=>s+d,0)/devs.length) : 0;
+  const totalUnits   = lots.reduce((s,l) => s + l.finalUnits, 0);
+  const totalProj    = lots.reduce((s,l) => s + l.projected, 0);
+  const uniqueProds  = new Set(lots.map(l => l.product)).size;
+  const totalLots    = lots.length;
+  const devs         = lots.map(l => lotDev(l)).filter(d => d !== null);
+  const avgDev       = devs.length ? devs.reduce((s,d)=>s+d,0)/devs.length : 0;
   const highDevCount = devs.filter(d => d < -5).length;
 
-  // Date range from raw rows for accuracy
+  // Date range
   const dates = allRows.map(r => new Date(r['Date'])).filter(d => !isNaN(d));
-  const minDate = new Date(Math.min(...dates));
-  const maxDate = new Date(Math.max(...dates));
+  const minDate = new Date(Math.min(...dates)), maxDate = new Date(Math.max(...dates));
   const fmt = d => `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`;
   if (dates.length) document.getElementById('data-range').textContent = `Data: ${fmt(minDate)} – ${fmt(maxDate)}`;
 
-  // --- Top products by final units ---
-  const byProd = {};
-  lots.forEach(l => {
-    if (!byProd[l.product]) byProd[l.product] = 0;
-    byProd[l.product] += l.finalUnits;
-  });
-  const topProds = Object.entries(byProd).sort((a,b)=>b[1]-a[1]).slice(0,8);
-
-  // --- Powder product mix — group by jar SIZE only (strip color/material), top 10 ---
-  const byJar = {};
-  lots.forEach(l => {
-    const j = (l.jarSize||'').trim();
-    if (!j) return;
-    // extract just the size portion: leading number+unit e.g. "25oz", "70oz", "400cc", "1gal"
-    const sizeMatch = j.match(/^(\d+(?:\.\d+)?)\s*(oz|cc|ml|lb|gal|g)\b/i)
-                   || j.match(/^(\d+(?:\.\d+)?)\s*gallon/i);
-    let displayKey = j;
-    if (sizeMatch) {
-      const n = sizeMatch[1];
-      const u = (sizeMatch[2]||'gallon').toLowerCase();
-      if (u === 'g' || u === 'gal' || u === 'gallon') displayKey = `${n} Gallon`;
-      else displayKey = `${n}${u}`;
-    } else if (/gallon/i.test(j)) {
-      // e.g. "1 Gallon White HDPE" — extract leading number + Gallon
-      const gm = j.match(/(\d+(?:\.\d+)?)\s*gallon/i);
-      displayKey = gm ? `${gm[1]} Gallon` : j;
-    }
-    if (!byJar[displayKey]) byJar[displayKey] = 0;
-    byJar[displayKey] += l.finalUnits;
-  });
-  const jarEntries = Object.entries(byJar).sort((a,b)=>b[1]-a[1]).slice(0,10);
-
-  // --- Weekly trend — sum Final Units directly from raw rows (avoid lot double-count) ---
-  const byWeek = {};
-  allRows.forEach(r => {
-    const w = (r['WEEK NUMBER']||'').trim();
-    if (!w) return;
-    if (!byWeek[w]) byWeek[w] = 0;
-    byWeek[w] += num(r['Final Units']);
-  });
-  const weeks = Object.keys(byWeek)
-    .sort((a,b) => {
-      const an = parseFloat(a), bn = parseFloat(b);
-      return (!isNaN(an) && !isNaN(bn)) ? an - bn : a.localeCompare(b);
-    })
-    .filter(w => byWeek[w] > 0)
-    .slice(-6);
-
-  // --- Production lines breakdown ---
-  const byLine = {};
-  allRows.forEach(r => {
-    const line = (r['Line']||'').trim();
-    if (!line) return;
-    if (!byLine[line]) byLine[line] = { units: 0, lots: new Set() };
-    byLine[line].units += num(r['Final Units']);
-    byLine[line].lots.add(r['Lot Number']);
-  });
-  const lineEntries = Object.entries(byLine).sort((a,b) => b[1].units - a[1].units);
-  const maxLineUnits = lineEntries[0]?.[1].units || 1;
-  const YEAR_TARGET_2 = 3927000;
-  const byMonth = {};
-  allRows.forEach(r => {
-    const d = new Date(r['Date']);
-    if (isNaN(d)) return;
-    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    if (!byMonth[key]) byMonth[key] = { year: d.getFullYear(), month: d.getMonth()+1, units: 0 };
-    byMonth[key].units += num(r['Final Units']);
-  });
-  const monthRows = Object.keys(byMonth).sort().map(k => {
-    const { year, month, units } = byMonth[k];
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const daysInYear = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365;
-    const target = Math.round((daysInMonth / daysInYear) * YEAR_TARGET_2);
-    const pctOfTarget = target ? ((units / target) * 100) : 0;
-    const label = new Date(year, month-1, 1).toLocaleDateString('en-US', { month:'2-digit', year:'numeric' }).replace('/','/');;
-    return { label, units, target, pctOfTarget };
-  });
-
-  // --- Year-end projection ---
-  const YEAR_TARGET = 3927000;
+  // Year-end projection
   const now = new Date();
-  const yearStart = new Date(now.getFullYear(), 0, 1);
-  const dayOfYear = Math.ceil((now - yearStart) / 86400000);
+  const dayOfYear = Math.ceil((now - new Date(now.getFullYear(),0,1)) / 86400000);
   const yearProjected = Math.round((totalUnits / dayOfYear) * 365);
   const toTarget = yearProjected - YEAR_TARGET;
   const targetPct = Math.round((yearProjected / YEAR_TARGET) * 100);
   const onTrack = yearProjected >= YEAR_TARGET;
 
+  // Top products
+  const byProd = {};
+  lots.forEach(l => { byProd[l.product] = (byProd[l.product]||0) + l.finalUnits; });
+  const topProds = Object.entries(byProd).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const maxProdUnits = topProds[0]?.[1] || 1;
+
+  // Powder mix by jar size
+  const byJar = {};
+  lots.forEach(l => {
+    const k = jarSizeKey(l.jarSize);
+    if (!k) return;
+    byJar[k] = (byJar[k]||0) + l.finalUnits;
+  });
+  const jarEntries = Object.entries(byJar).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const jarTotal = jarEntries.reduce((s,[,v])=>s+v,0);
+
+  // Weekly trend (last 6 non-zero weeks)
+  const byWeek = {};
+  allRows.forEach(r => {
+    const w = (r['WEEK NUMBER']||'').trim();
+    if (!w) return;
+    byWeek[w] = (byWeek[w]||0) + num(r['Final Units']);
+  });
+  const weeks = Object.keys(byWeek)
+    .sort((a,b) => { const an=parseFloat(a),bn=parseFloat(b); return (!isNaN(an)&&!isNaN(bn))?an-bn:a.localeCompare(b); })
+    .filter(w => byWeek[w] > 0).slice(-6);
+
+  // Monthly vs target
+  const byMonth = {};
+  allRows.forEach(r => {
+    const d = new Date(r['Date']);
+    if (isNaN(d)) return;
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if (!byMonth[key]) byMonth[key] = { year:d.getFullYear(), month:d.getMonth()+1, units:0 };
+    byMonth[key].units += num(r['Final Units']);
+  });
+  const monthRows = Object.keys(byMonth).sort().map(k => {
+    const {year,month,units} = byMonth[k];
+    const daysInMonth = new Date(year,month,0).getDate();
+    const daysInYear  = (year%4===0&&(year%100!==0||year%400===0))?366:365;
+    const target = Math.round((daysInMonth/daysInYear)*YEAR_TARGET);
+    const pctOfTarget = target ? (units/target)*100 : 0;
+    const label = `${String(month).padStart(2,'0')}/${year}`;
+    return {label,units,target,pctOfTarget};
+  });
+
+  // Production lines
+  const byLine = {};
+  allRows.forEach(r => {
+    const line = (r['Line']||'').trim();
+    if (!line) return;
+    if (!byLine[line]) byLine[line] = { units:0, lots:new Set() };
+    byLine[line].units += num(r['Final Units']);
+    byLine[line].lots.add(r['Lot Number']);
+  });
+  const lineEntries = Object.entries(byLine).sort((a,b)=>b[1].units-a[1].units);
+  const maxLineUnits = lineEntries[0]?.[1].units || 1;
+  const lineTotal = lineEntries.reduce((s,[,d])=>s+d.units,0);
+
+  // Product performance table
+  const prodDetail = {};
+  lots.forEach(l => {
+    if (!prodDetail[l.product]) prodDetail[l.product]={proj:0,final:0,lots:0,complete:0,partial:0};
+    const p=prodDetail[l.product];
+    p.proj+=l.projected; p.final+=l.finalUnits; p.lots++;
+    if(l.status.toLowerCase().includes('complete'))p.complete++;
+    else if(l.status.toLowerCase().includes('partial'))p.partial++;
+  });
+  const top10=Object.entries(prodDetail).sort((a,b)=>b[1].final-a[1].final).slice(0,10);
+
+  const devColor = avgDev<-2?'#a32d2d':avgDev>2?'#3b6d11':'inherit';
+  const devClass  = avgDev<-2?'warn':avgDev>2?'good':'';
+
   document.getElementById('content').innerHTML = `
     <div class="metrics">
-      <div class="metric info">
-        <div class="label">Units produced</div>
-        <div class="value">${totalUnits.toLocaleString()}</div>
-        <div class="sub">vs ${totalProj.toLocaleString()} projected</div>
-      </div>
-      <div class="metric">
-        <div class="label">Total lots</div>
-        <div class="value">${totalLots.toLocaleString()}</div>
-        <div class="sub">${completeLots.length} complete · ${partialLots.length} partial</div>
-      </div>
-      <div class="metric good">
-        <div class="label">Completion rate</div>
-        <div class="value">${pct(completeLots.length,totalLots)}%</div>
-        <div class="sub">${completeLots.length} of ${totalLots} lots</div>
-      </div>
-      <div class="metric ${devClass}">
-        <div class="label">Avg deviation</div>
-        <div class="value" style="color:${devColor}">${avgDev>0?'+':''}${avgDev.toFixed(1)}%</div>
-        <div class="sub">${highDevCount} lots >5% under</div>
-      </div>
-      <div class="metric">
-        <div class="label">Unique products</div>
-        <div class="value">${uniqueProds}</div>
-        <div class="sub">across all lots</div>
-      </div>
+      <div class="metric info"><div class="label">Units produced</div><div class="value">${totalUnits.toLocaleString()}</div><div class="sub">vs ${totalProj.toLocaleString()} projected</div></div>
+      <div class="metric"><div class="label">Total lots</div><div class="value">${totalLots.toLocaleString()}</div><div class="sub">${completeLots.length} complete · ${partialLots.length} partial</div></div>
+      <div class="metric good"><div class="label">Completion rate</div><div class="value">${pct(completeLots.length,totalLots)}%</div><div class="sub">${completeLots.length} of ${totalLots} lots</div></div>
+      <div class="metric ${devClass}"><div class="label">Avg deviation</div><div class="value" style="color:${devColor}">${avgDev>0?'+':''}${avgDev.toFixed(1)}%</div><div class="sub">${highDevCount} lots >5% under</div></div>
+      <div class="metric"><div class="label">Unique products</div><div class="value">${uniqueProds}</div><div class="sub">across all lots</div></div>
     </div>
 
-    <div class="full-card" style="margin-bottom:1rem">
-      <h3>Production lines breakdown</h3>
-      <div class="tbl-wrap"><table>
-        <thead><tr>
-          <th style="text-align:left;padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--color-text-secondary,#666);border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15));font-weight:500">Line</th>
-          <th style="text-align:right;padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--color-text-secondary,#666);border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15));font-weight:500">Units produced</th>
-          <th style="text-align:right;padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--color-text-secondary,#666);border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15));font-weight:500">% of total</th>
-          <th style="text-align:right;padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--color-text-secondary,#666);border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15));font-weight:500">Lots run</th>
-          <th style="padding:6px 10px;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15))"></th>
-        </tr></thead>
-        <tbody>
-          ${lineEntries.map(([line, d]) => {
-            const sharePct = lineTotal ? ((d.units / lineTotal) * 100) : 0;
-            const barW = Math.round((d.units / maxLineUnits) * 100);
-            const lotCount = d.lots.size;
-            return `<tr style="border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.06))">
-              <td style="padding:6px 10px;font-weight:500">${line}</td>
-              <td style="padding:6px 10px;text-align:right">${d.units.toLocaleString()}</td>
-              <td style="padding:6px 10px;text-align:right;color:var(--color-text-secondary,#666)">${sharePct.toFixed(1)}%</td>
-              <td style="padding:6px 10px;text-align:right;color:var(--color-text-secondary,#666)">${lotCount.toLocaleString()}</td>
-              <td style="padding:6px 10px;min-width:120px">
-                <div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:6px;overflow:hidden">
-                  <div style="height:100%;width:${barW}%;background:#1D9E75;border-radius:3px"></div>
-                </div>
-              </td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table></div>
-    </div>
-
-    <div class="full-card" style="margin-bottom:1rem">
-      <h3>Units produced by month vs. target</h3>
-      <div class="tbl-wrap"><table>
-        <thead><tr>
-          <th style="text-align:left;padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--color-text-secondary,#666);border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15));font-weight:500">Month</th>
-          <th style="text-align:right;padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--color-text-secondary,#666);border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15));font-weight:500">Actual</th>
-          <th style="text-align:right;padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--color-text-secondary,#666);border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15));font-weight:500">Target</th>
-          <th style="text-align:right;padding:6px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--color-text-secondary,#666);border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15));font-weight:500">% of target</th>
-          <th style="padding:6px 10px;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.15))"></th>
-        </tr></thead>
-        <tbody>
-          ${monthRows.map(m => {
-            const over = m.pctOfTarget >= 100;
-            const pctColor = over ? '#3b6d11' : '#a32d2d';
-            const barW = Math.min(Math.round(m.pctOfTarget), 100);
-            return `<tr style="border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.06))">
-              <td style="padding:6px 10px;font-weight:500">${m.label}</td>
-              <td style="padding:6px 10px;text-align:right">${m.units.toLocaleString()}</td>
-              <td style="padding:6px 10px;text-align:right;color:var(--color-text-secondary,#666)">${m.target.toLocaleString()}</td>
-              <td style="padding:6px 10px;text-align:right;font-weight:500;color:${pctColor}">${m.pctOfTarget.toFixed(2)}%</td>
-              <td style="padding:6px 10px;width:100px">
-                <div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:6px;overflow:hidden;position:relative">
-                  <div style="height:100%;width:${barW}%;background:${over?'#639922':'#a32d2d'};border-radius:3px"></div>
-                  <div style="position:absolute;top:0;left:0;height:100%;width:1px;left:100%;background:rgba(0,0,0,.2)"></div>
-                </div>
-              </td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table></div>
-    </div>
-
-    <div class="full-card" style="margin-bottom:1rem">
+    <div class="full-card">
       <h3>Year-end projection vs target</h3>
       <div style="display:flex;align-items:center;gap:2rem;flex-wrap:wrap;margin-bottom:1rem">
-        <div>
-          <div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Day of year</div>
-          <div style="font-size:20px;font-weight:500">${dayOfYear} <span style="font-size:13px;color:var(--color-text-secondary,#666)">of 365</span></div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Units to date</div>
-          <div style="font-size:20px;font-weight:500">${totalUnits.toLocaleString()}</div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Pace — year-end projection</div>
-          <div style="font-size:20px;font-weight:500;color:${onTrack?'#3b6d11':'#a32d2d'}">${yearProjected.toLocaleString()}</div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Year-end target</div>
-          <div style="font-size:20px;font-weight:500">3,927,000</div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">vs target</div>
-          <div style="font-size:20px;font-weight:500;color:${onTrack?'#3b6d11':'#a32d2d'}">${onTrack?'+':''}${toTarget.toLocaleString()} <span style="font-size:13px">(${targetPct}%)</span></div>
-        </div>
+        <div><div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Day of year</div><div style="font-size:20px;font-weight:500">${dayOfYear} <span style="font-size:13px;color:var(--color-text-secondary,#666)">of 365</span></div></div>
+        <div><div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Units to date</div><div style="font-size:20px;font-weight:500">${totalUnits.toLocaleString()}</div></div>
+        <div><div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Year-end projection</div><div style="font-size:20px;font-weight:500;color:${onTrack?'#3b6d11':'#a32d2d'}">${yearProjected.toLocaleString()}</div></div>
+        <div><div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Year-end target</div><div style="font-size:20px;font-weight:500">3,927,000</div></div>
+        <div><div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">vs target</div><div style="font-size:20px;font-weight:500;color:${onTrack?'#3b6d11':'#a32d2d'}">${onTrack?'+':''}${toTarget.toLocaleString()} <span style="font-size:13px">(${targetPct}%)</span></div></div>
       </div>
       <div style="background:var(--color-background-secondary,#ececea);border-radius:8px;height:12px;overflow:hidden">
-        <div style="height:100%;width:${Math.min(targetPct,100)}%;background:${onTrack?'#639922':'#a32d2d'};border-radius:8px;transition:width .4s ease"></div>
+        <div style="height:100%;width:${Math.min(targetPct,100)}%;background:${onTrack?'#639922':'#a32d2d'};border-radius:8px"></div>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--color-text-tertiary,#999);margin-top:4px">
-        <span>0</span>
-        <span style="color:${onTrack?'#3b6d11':'#a32d2d'};font-weight:500">${targetPct}% of target</span>
-        <span>3,927,000</span>
+        <span>0</span><span style="color:${onTrack?'#3b6d11':'#a32d2d'};font-weight:500">${targetPct}% of target</span><span>3,927,000</span>
       </div>
     </div>
 
     <div class="charts-row">
       <div class="chart-card">
         <h3>Top products by units produced</h3>
-        <div id="top-prods-table" style="overflow-y:auto;max-height:240px"></div>
+        <div id="top-prods-table" style="overflow-y:auto;max-height:260px"></div>
       </div>
       <div class="chart-card">
         <h3>Powder product mix — units by jar size</h3>
-        <div style="position:relative;height:240px"><canvas id="cJar"></canvas></div>
+        <div style="position:relative;height:260px"><canvas id="cJar"></canvas></div>
       </div>
     </div>
 
     <div class="chart-card" style="margin-bottom:1rem">
-      <h3>Weekly units produced — last 6 weeks</h3>
+      <h3>Weekly units produced — last 6 completed weeks</h3>
       <div style="position:relative;height:200px"><canvas id="cWeekly"></canvas></div>
+    </div>
+
+    <div class="full-card">
+      <h3>Production lines breakdown</h3>
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>Line</th>
+          <th style="text-align:right">Units produced</th>
+          <th style="text-align:right">% of total</th>
+          <th style="text-align:right">Lots run</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${lineEntries.map(([line,d]) => {
+          const sp = lineTotal ? ((d.units/lineTotal)*100) : 0;
+          const bw = Math.round((d.units/maxLineUnits)*100);
+          return `<tr>
+            <td style="font-weight:500">${line}</td>
+            <td style="text-align:right">${d.units.toLocaleString()}</td>
+            <td style="text-align:right;color:var(--color-text-secondary,#666)">${sp.toFixed(1)}%</td>
+            <td style="text-align:right;color:var(--color-text-secondary,#666)">${d.lots.size.toLocaleString()}</td>
+            <td style="min-width:120px;padding:6px 10px">
+              <div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:6px;overflow:hidden">
+                <div style="height:100%;width:${bw}%;background:#1D9E75;border-radius:3px"></div>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+    </div>
+
+    <div class="full-card">
+      <h3>Units produced by month vs. target</h3>
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>Month</th>
+          <th style="text-align:right">Actual</th>
+          <th style="text-align:right">Target</th>
+          <th style="text-align:right">% of target</th>
+          <th></th>
+        </tr></thead>
+        <tbody>${monthRows.map(m => {
+          const over = m.pctOfTarget >= 100;
+          const pc = over?'#3b6d11':'#a32d2d';
+          const bw = Math.min(Math.round(m.pctOfTarget),100);
+          return `<tr>
+            <td style="font-weight:500">${m.label}</td>
+            <td style="text-align:right">${m.units.toLocaleString()}</td>
+            <td style="text-align:right;color:var(--color-text-secondary,#666)">${m.target.toLocaleString()}</td>
+            <td style="text-align:right;font-weight:500;color:${pc}">${m.pctOfTarget.toFixed(2)}%</td>
+            <td style="min-width:100px;padding:6px 10px">
+              <div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:6px;overflow:hidden">
+                <div style="height:100%;width:${bw}%;background:${over?'#639922':'#a32d2d'};border-radius:3px"></div>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
     </div>
 
     <div class="full-card">
       <h3>Product performance — top 10 by volume</h3>
       <div class="tbl-wrap"><table>
         <thead><tr>
-          <th>Product</th><th>Lots</th><th>Complete</th><th>Partial</th>
-          <th>Projected</th><th>Units produced</th><th>Avg deviation</th>
+          <th>Product</th><th style="text-align:right">Lots</th><th style="text-align:right">Complete</th>
+          <th style="text-align:right">Partial</th><th style="text-align:right">Projected</th>
+          <th style="text-align:right">Units produced</th><th style="text-align:right">Avg deviation</th>
         </tr></thead>
-        <tbody id="exec-prod-tbody"></tbody>
+        <tbody>${top10.map(([prod,d])=>{
+          const dev=d.proj?((d.final-d.proj)/d.proj*100):0;
+          const dc=dev<-5?'color:#a32d2d':dev>5?'color:#3b6d11':'';
+          return `<tr>
+            <td style="font-weight:500">${prod}</td>
+            <td style="text-align:right">${d.lots}</td><td style="text-align:right">${d.complete}</td>
+            <td style="text-align:right">${d.partial}</td>
+            <td style="text-align:right">${d.proj.toLocaleString()}</td>
+            <td style="text-align:right">${d.final.toLocaleString()}</td>
+            <td style="text-align:right;${dc}">${dev>0?'+':''}${dev.toFixed(1)}%</td>
+          </tr>`;
+        }).join('')}</tbody>
       </table></div>
     </div>
   `;
 
-  // fill product table
-  const prodDetail = {};
-  lots.forEach(l => {
-    if (!prodDetail[l.product]) prodDetail[l.product] = {proj:0,final:0,lots:0,complete:0,partial:0};
-    const p = prodDetail[l.product];
-    p.proj += l.projected; p.final += l.finalUnits; p.lots++;
-    if (l.status.toLowerCase().includes('complete')) p.complete++;
-    else if (l.status.toLowerCase().includes('partial')) p.partial++;
-  });
-  const top10 = Object.entries(prodDetail).sort((a,b)=>b[1].final-a[1].final).slice(0,10);
-  document.getElementById('exec-prod-tbody').innerHTML = top10.map(([prod,d])=>{
-    const dev = d.proj ? ((d.final-d.proj)/d.proj*100) : 0;
-    const dc = dev < -5 ? 'color:#a32d2d' : dev > 5 ? 'color:#3b6d11' : '';
-    return `<tr>
-      <td style="font-weight:500">${prod}</td>
-      <td>${d.lots}</td><td>${d.complete}</td><td>${d.partial}</td>
-      <td>${d.proj.toLocaleString()}</td>
-      <td>${d.final.toLocaleString()}</td>
-      <td style="${dc}">${dev>0?'+':''}${dev.toFixed(1)}%</td>
-    </tr>`;
-  }).join('');
-
-  // Top products ranked table
-  const maxUnits = topProds[0]?.[1] || 1;
+  // Top products table
   document.getElementById('top-prods-table').innerHTML = `
     <table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr>
-        <th style="text-align:left;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1));white-space:nowrap">#</th>
+        <th style="text-align:left;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1))">#</th>
         <th style="text-align:left;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1))">Product</th>
-        <th style="text-align:right;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1));white-space:nowrap">Units</th>
-        <th style="padding:4px 8px;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1));width:80px"></th>
+        <th style="text-align:right;padding:4px 8px;color:var(--color-text-secondary,#666);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1))">Units</th>
+        <th style="border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.1));width:80px"></th>
       </tr></thead>
-      <tbody>
-        ${topProds.map(([p,v],i) => {
-          const barW = Math.round((v/maxUnits)*100);
-          return `<tr style="border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.06))">
-            <td style="padding:5px 8px;color:var(--color-text-tertiary,#999);font-size:11px">${i+1}</td>
-            <td style="padding:5px 8px;font-weight:500">${p}</td>
-            <td style="padding:5px 8px;text-align:right;white-space:nowrap">${v.toLocaleString()}</td>
-            <td style="padding:5px 8px">
-              <div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:6px;overflow:hidden">
-                <div style="height:100%;width:${barW}%;background:#378ADD;border-radius:3px"></div>
-              </div>
-            </td>
-          </tr>`;
-        }).join('')}
-      </tbody>
+      <tbody>${topProds.map(([p,v],i)=>{
+        const bw=Math.round((v/maxProdUnits)*100);
+        return `<tr style="border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.06))">
+          <td style="padding:5px 8px;color:var(--color-text-tertiary,#999);font-size:11px">${i+1}</td>
+          <td style="padding:5px 8px;font-weight:500">${p}</td>
+          <td style="padding:5px 8px;text-align:right;white-space:nowrap">${v.toLocaleString()}</td>
+          <td style="padding:5px 8px">
+            <div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:6px;overflow:hidden">
+              <div style="height:100%;width:${bw}%;background:#378ADD;border-radius:3px"></div>
+            </div>
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
     </table>`;
 
-  // remove old chart reference
-  if (charts.prods) { try{charts.prods.destroy();}catch(e){} delete charts.prods; }
-
-  // Chart: jar size powder mix (doughnut)
-  const JAR_COLORS = ['#185fa5','#1D9E75','#EF9F27','#D4537E','#7F77DD','#D85A30','#639922','#E24B4A'];
-  const jarTotal = jarEntries.reduce((s,[,v])=>s+v,0);
-  charts.jar = new Chart(document.getElementById('cJar'), {
+  const JAR_COLORS=['#185fa5','#1D9E75','#EF9F27','#D4537E','#7F77DD','#D85A30','#639922','#E24B4A','#378ADD','#5DCAA5'];
+  charts.jar = new Chart(document.getElementById('cJar'),{
     type:'doughnut',
-    data:{
-      labels: jarEntries.map(([j,v])=>`${j} (${Math.round(v/jarTotal*100)}%)`),
-      datasets:[{ data:jarEntries.map(([,v])=>v), backgroundColor:JAR_COLORS, borderWidth:0 }]
-    },
-    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'right', labels:{ font:{size:10}, boxWidth:10, padding:8 } } } }
+    data:{ labels:jarEntries.map(([j,v])=>`${j} (${Math.round(v/jarTotal*100)}%)`), datasets:[{data:jarEntries.map(([,v])=>v),backgroundColor:JAR_COLORS,borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:10},boxWidth:10,padding:8}}}}
   });
 
-  charts.weekly = new Chart(document.getElementById('cWeekly'), {
+  charts.weekly = new Chart(document.getElementById('cWeekly'),{
     type:'bar',
-    data:{ labels: weeks.map(w=>`Week ${w}`), datasets:[
-      { label:'Units produced', data:weeks.map(w=>byWeek[w]), backgroundColor:'#378ADD', borderRadius:4 }
-    ]},
-    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ticks:{font:{size:11}}}, y:{ticks:{callback:v=>v.toLocaleString()}} } }
+    data:{ labels:weeks.map(w=>`Week ${w}`), datasets:[{label:'Units produced',data:weeks.map(w=>byWeek[w]),backgroundColor:'#378ADD',borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:11}}},y:{ticks:{callback:v=>v.toLocaleString()}}}}
   });
 }
 
@@ -535,11 +459,12 @@ function renderOps() {
     </div>
     <div id="ops-metrics" class="metrics" style="margin-bottom:1rem"></div>
     <div class="full-card">
-      <div class="tbl-wrap"><table>
+      <div class="tbl-wrap"><table style="min-width:700px">
         <thead><tr>
           <th onclick="sortBy('date')">Date ↕</th>
           <th onclick="sortBy('lot')">Lot # ↕</th>
           <th onclick="sortBy('product')">Product ↕</th>
+          <th onclick="sortBy('line')">Line ↕</th>
           <th onclick="sortBy('bottleSize')">Bottle ↕</th>
           <th onclick="sortBy('jarSize')">Jar ↕</th>
           <th onclick="sortBy('projected')">Projected ↕</th>
@@ -562,65 +487,56 @@ function renderOps() {
 }
 
 function getFilteredLots() {
-  const search = (document.getElementById('fSearch')||{}).value?.toLowerCase()||'';
-  const prod   = (document.getElementById('fProduct')||{}).value||'';
-  const status = (document.getElementById('fStatus')||{}).value||'';
-  const week   = (document.getElementById('fWeek')||{}).value||'';
-  const bottle = (document.getElementById('fBottle')||{}).value||'';
-  const jar    = (document.getElementById('fJar')||{}).value||'';
-  return Object.values(lotMap).filter(l => {
-    if (search && !(l.lot.toLowerCase().includes(search)||l.product.toLowerCase().includes(search))) return false;
-    if (prod   && l.product !== prod) return false;
-    if (status && !l.status.toLowerCase().includes(status.toLowerCase())) return false;
-    if (week   && l.week !== week) return false;
-    if (bottle && l.bottleSize !== bottle) return false;
-    if (jar    && l.jarSize !== jar) return false;
+  const search=(document.getElementById('fSearch')||{}).value?.toLowerCase()||'';
+  const prod  =(document.getElementById('fProduct')||{}).value||'';
+  const status=(document.getElementById('fStatus')||{}).value||'';
+  const week  =(document.getElementById('fWeek')||{}).value||'';
+  const bottle=(document.getElementById('fBottle')||{}).value||'';
+  const jar   =(document.getElementById('fJar')||{}).value||'';
+  return Object.values(lotMap).filter(l=>{
+    if(search&&!(l.lot.toLowerCase().includes(search)||l.product.toLowerCase().includes(search)))return false;
+    if(prod&&l.product!==prod)return false;
+    if(status&&!l.status.toLowerCase().includes(status.toLowerCase()))return false;
+    if(week&&l.week!==week)return false;
+    if(bottle&&l.bottleSize!==bottle)return false;
+    if(jar&&l.jarSize!==jar)return false;
     return true;
   });
 }
 
-function applyFilters() { page=1; updateOpsTable(); }
-function clearFilters() {
-  ['fSearch','fProduct','fStatus','fWeek','fBottle','fJar'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  applyFilters();
-}
-function sortBy(col) { if(sortCol===col)sortDir*=-1;else{sortCol=col;sortDir=1;} updateOpsTable(); }
-function changePage(dir) { page+=dir; updateOpsTable(); }
+function applyFilters(){page=1;updateOpsTable();}
+function clearFilters(){['fSearch','fProduct','fStatus','fWeek','fBottle','fJar'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});applyFilters();}
+function sortBy(col){if(sortCol===col)sortDir*=-1;else{sortCol=col;sortDir=1;}updateOpsTable();}
+function changePage(dir){page+=dir;updateOpsTable();}
 
-function updateOpsTable() {
-  let lots = getFilteredLots();
-  if (sortCol) {
-    lots = [...lots].sort((a,b) => {
-      let av = a[sortCol]??'', bv = b[sortCol]??'';
-      if (sortCol==='dev') { av=lotDev(a)??-999; bv=lotDev(b)??-999; }
-      if (sortCol==='date') {
-        const da = new Date(av), db = new Date(bv);
-        return (da-db)*sortDir;
-      }
-      if (typeof av==='number'||!isNaN(parseFloat(av))) return (parseFloat(av)-parseFloat(bv))*sortDir;
+function updateOpsTable(){
+  let lots=getFilteredLots();
+  if(sortCol){
+    lots=[...lots].sort((a,b)=>{
+      let av=a[sortCol]??'',bv=b[sortCol]??'';
+      if(sortCol==='dev'){av=lotDev(a)??-999;bv=lotDev(b)??-999;}
+      if(sortCol==='date'){return(new Date(av)-new Date(bv))*sortDir;}
+      if(typeof av==='number'||!isNaN(parseFloat(av)))return(parseFloat(av)-parseFloat(bv))*sortDir;
       return String(av).localeCompare(String(bv))*sortDir;
     });
   }
-  const total=lots.length, totalPages=Math.ceil(total/PAGE_SIZE)||1;
+  const total=lots.length,totalPages=Math.ceil(total/PAGE_SIZE)||1;
   page=Math.min(Math.max(1,page),totalPages);
   const slice=lots.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE);
-
-  const totalProj  = lots.reduce((s,l)=>s+l.projected,0);
-  const totalFinal = lots.reduce((s,l)=>s+l.finalUnits,0);
-  const complete   = lots.filter(l=>l.status.toLowerCase().includes('complete')).length;
-  const devs       = lots.map(l=>lotDev(l)).filter(d=>d!==null);
-  const avgDev     = devs.length ? devs.reduce((s,d)=>s+d,0)/devs.length : 0;
-  const dc         = avgDev<-2?'#a32d2d':avgDev>2?'#3b6d11':'inherit';
-
+  const totalProj=lots.reduce((s,l)=>s+l.projected,0);
+  const totalFinal=lots.reduce((s,l)=>s+l.finalUnits,0);
+  const complete=lots.filter(l=>l.status.toLowerCase().includes('complete')).length;
+  const devs=lots.map(l=>lotDev(l)).filter(d=>d!==null);
+  const avgDev=devs.length?devs.reduce((s,d)=>s+d,0)/devs.length:0;
+  const dc=avgDev<-2?'#a32d2d':avgDev>2?'#3b6d11':'inherit';
   const om=document.getElementById('ops-metrics');
-  if(om) om.innerHTML=`
+  if(om)om.innerHTML=`
     <div class="metric info"><div class="label">Lots shown</div><div class="value">${total.toLocaleString()}</div></div>
     <div class="metric"><div class="label">Units produced</div><div class="value">${totalFinal.toLocaleString()}</div><div class="sub">vs ${totalProj.toLocaleString()} projected</div></div>
     <div class="metric"><div class="label">Avg deviation</div><div class="value" style="color:${dc}">${avgDev>0?'+':''}${avgDev.toFixed(1)}%</div><div class="sub">lot by lot</div></div>
     <div class="metric good"><div class="label">Complete lots</div><div class="value">${complete}</div><div class="sub">of ${total} shown</div></div>`;
-
   const body=document.getElementById('ops-body');
-  if(!body) return;
+  if(!body)return;
   body.innerHTML=slice.map(l=>{
     const dev=lotDev(l);
     const devStr=dev!==null?`${dev>0?'+':''}${dev.toFixed(1)}%`:'—';
@@ -628,28 +544,21 @@ function updateOpsTable() {
     const st=l.status.toLowerCase();
     const badgeCls=st.includes('complete')?'complete':st.includes('partial')?'partial':'';
     return `<tr>
-      <td>${l.date}</td>
-      <td style="font-weight:500">${l.lot}</td>
-      <td>${l.product}</td>
-      <td>${l.bottleSize||'—'}</td>
-      <td>${l.jarSize||'—'}</td>
-      <td>${l.projected?l.projected.toLocaleString():'—'}</td>
-      <td>${l.finalUnits?l.finalUnits.toLocaleString():'—'}</td>
+      <td>${l.date}</td><td style="font-weight:500">${l.lot}</td><td>${l.product}</td>
+      <td>${l.line||'—'}</td><td>${l.bottleSize||'—'}</td><td>${l.jarSize||'—'}</td>
+      <td style="text-align:right">${l.projected?l.projected.toLocaleString():'—'}</td>
+      <td style="text-align:right">${l.finalUnits?l.finalUnits.toLocaleString():'—'}</td>
       <td>${dev!==null?`<span class="badge ${devCls}">${devStr}</span>`:'—'}</td>
       <td><span class="badge ${badgeCls}">${l.status||'—'}</span></td>
-      <td>${l.week||'—'}</td>
-      <td>${l.induction||'—'}</td>
-      <td>${l.beltSpeed||'—'}</td>
-      <td>${l.lidSize||'—'}</td>
-      <td>${l.desiccant||'—'}</td>
+      <td>${l.week||'—'}</td><td>${l.induction||'—'}</td><td>${l.beltSpeed||'—'}</td>
+      <td>${l.lidSize||'—'}</td><td>${l.desiccant||'—'}</td>
     </tr>`;
   }).join('');
-
   const pi=document.getElementById('pageInfo'),pb=document.getElementById('prevBtn'),nb=document.getElementById('nextBtn'),rc=document.getElementById('rowCount');
-  if(pi) pi.textContent=`Page ${page} of ${totalPages}`;
-  if(pb) pb.disabled=page<=1;
-  if(nb) nb.disabled=page>=totalPages;
-  if(rc) rc.textContent=`${total.toLocaleString()} lots`;
+  if(pi)pi.textContent=`Page ${page} of ${totalPages}`;
+  if(pb)pb.disabled=page<=1;
+  if(nb)nb.disabled=page>=totalPages;
+  if(rc)rc.textContent=`${total.toLocaleString()} lots`;
 }
 </script>
 </body>
