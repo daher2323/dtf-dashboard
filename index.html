@@ -254,12 +254,9 @@ function renderExec() {
   allRows.forEach(r => {
     const line = (r['Line']||'').trim();
     if (!line) return;
-    if (!byLine[line]) byLine[line] = { units: 0, lots: new Set(), complete: 0, partial: 0 };
+    if (!byLine[line]) byLine[line] = { units: 0, lots: new Set() };
     byLine[line].units += num(r['Final Units']);
     byLine[line].lots.add(r['Lot Number']);
-    const st = (r['Complete or Partial']||'').toLowerCase();
-    if (st.includes('complete')) byLine[line].complete++;
-    else if (st.includes('partial')) byLine[line].partial++;
   });
   const lineEntries = Object.entries(byLine).sort((a,b) => b[1].units - a[1].units);
   const maxLineUnits = lineEntries[0]?.[1].units || 1;
@@ -333,7 +330,7 @@ function renderExec() {
         </tr></thead>
         <tbody>
           ${lineEntries.map(([line, d]) => {
-            const sharePct = totalUnits ? ((d.units / totalUnits) * 100) : 0;
+            const sharePct = lineTotal ? ((d.units / lineTotal) * 100) : 0;
             const barW = Math.round((d.units / maxLineUnits) * 100);
             const lotCount = d.lots.size;
             return `<tr style="border-bottom:0.5px solid var(--color-border-tertiary,rgba(0,0,0,.06))">
