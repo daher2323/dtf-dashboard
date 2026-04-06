@@ -131,6 +131,10 @@ function buildLotMap(rows) {
     }
     m[lot].finalUnits += num(r['Final Units']);
     if (r['Complete or Partial']) m[lot].status = r['Complete or Partial'];
+    // update line if not yet set — some lots' first row may be missing it
+    if (!m[lot].line && r['Line']) m[lot].line = r['Line'];
+    // update date if not yet set
+    if (!m[lot].date && r['Date']) m[lot].date = r['Date'];
   });
   return m;
 }
@@ -339,7 +343,6 @@ function renderExec() {
 
           <div class="full-card">
       <h3>Production lines breakdown</h3>
-      <div style="font-size:11px;color:#a32d2d;margin-bottom:8px;font-family:monospace">${debugInfo}</div>
       <div class="tbl-wrap"><table>
         <thead><tr>
           <th>Line</th>
