@@ -162,10 +162,10 @@ function jarSizeKey(j) {
 fetch(CSV_URL)
   .then(r => r.text())
   .then(text => {
-    allRows = parseCSV(text).filter(isValid);
+    const parsed = parseCSV(text).filter(r => r && typeof r === 'object' && Object.keys(r).length > 0);
+    allRows = parsed.filter(isValid);
     const built = buildLotMap(allRows);
     lotMap = built.lotMap;
-    // remove any null/undefined entries
     Object.keys(lotMap).forEach(k => { if (!lotMap[k]) delete lotMap[k]; });
     window._lineDateSets = built.lineDateSets;
     document.getElementById('loading').style.display = 'none';
