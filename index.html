@@ -244,6 +244,16 @@ function renderExec() {
   const devColor = avgDev < -2 ? '#a32d2d' : avgDev > 2 ? '#3b6d11' : 'inherit';
   const devClass = avgDev < -2 ? 'warn' : avgDev > 2 ? 'good' : '';
 
+  // --- Year-end projection ---
+  const YEAR_TARGET = 3927000;
+  const now = new Date();
+  const yearStart = new Date(now.getFullYear(), 0, 1);
+  const dayOfYear = Math.ceil((now - yearStart) / 86400000);
+  const yearProjected = Math.round((totalUnits / dayOfYear) * 365);
+  const toTarget = yearProjected - YEAR_TARGET;
+  const targetPct = Math.round((yearProjected / YEAR_TARGET) * 100);
+  const onTrack = yearProjected >= YEAR_TARGET;
+
   document.getElementById('content').innerHTML = `
     <div class="metrics">
       <div class="metric info">
@@ -270,6 +280,40 @@ function renderExec() {
         <div class="label">Unique products</div>
         <div class="value">${uniqueProds}</div>
         <div class="sub">across all lots</div>
+      </div>
+    </div>
+
+    <div class="full-card" style="margin-bottom:1rem">
+      <h3>Year-end projection vs target</h3>
+      <div style="display:flex;align-items:center;gap:2rem;flex-wrap:wrap;margin-bottom:1rem">
+        <div>
+          <div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Day of year</div>
+          <div style="font-size:20px;font-weight:500">${dayOfYear} <span style="font-size:13px;color:var(--color-text-secondary,#666)">of 365</span></div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Units to date</div>
+          <div style="font-size:20px;font-weight:500">${totalUnits.toLocaleString()}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Pace — year-end projection</div>
+          <div style="font-size:20px;font-weight:500;color:${onTrack?'#3b6d11':'#a32d2d'}">${yearProjected.toLocaleString()}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Year-end target</div>
+          <div style="font-size:20px;font-weight:500">3,927,000</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--color-text-secondary,#666);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">vs target</div>
+          <div style="font-size:20px;font-weight:500;color:${onTrack?'#3b6d11':'#a32d2d'}">${onTrack?'+':''}${toTarget.toLocaleString()} <span style="font-size:13px">(${targetPct}%)</span></div>
+        </div>
+      </div>
+      <div style="background:var(--color-background-secondary,#ececea);border-radius:8px;height:12px;overflow:hidden">
+        <div style="height:100%;width:${Math.min(targetPct,100)}%;background:${onTrack?'#639922':'#a32d2d'};border-radius:8px;transition:width .4s ease"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--color-text-tertiary,#999);margin-top:4px">
+        <span>0</span>
+        <span style="color:${onTrack?'#3b6d11':'#a32d2d'};font-weight:500">${targetPct}% of target</span>
+        <span>3,927,000</span>
       </div>
     </div>
 
