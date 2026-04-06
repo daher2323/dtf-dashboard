@@ -225,20 +225,20 @@ function renderExec() {
   });
   const jarEntries = Object.entries(byJar).sort((a,b)=>b[1]-a[1]).slice(0,10);
 
-  // --- Weekly trend — last 6 weeks by actual units, sorted numerically by week number ---
+  // --- Weekly trend — sum Final Units directly from raw rows (avoid lot double-count) ---
   const byWeek = {};
-  lots.forEach(l => {
-    const w = (l.week||'').trim();
+  allRows.forEach(r => {
+    const w = (r['WEEK NUMBER']||'').trim();
     if (!w) return;
     if (!byWeek[w]) byWeek[w] = 0;
-    byWeek[w] += l.finalUnits;
+    byWeek[w] += num(r['Final Units']);
   });
   const weeks = Object.keys(byWeek)
     .sort((a,b) => {
-      // sort numerically if week numbers are numeric, else lexically
       const an = parseFloat(a), bn = parseFloat(b);
       return (!isNaN(an) && !isNaN(bn)) ? an - bn : a.localeCompare(b);
     })
+    .filter(w => byWeek[w] > 0)
     .slice(-6);
 
   const devColor = avgDev < -2 ? '#a32d2d' : avgDev > 2 ? '#3b6d11' : 'inherit';
