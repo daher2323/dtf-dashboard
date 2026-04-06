@@ -246,10 +246,15 @@ function renderExec() {
     const {year,month,units} = byMonth[k];
     const daysInMonth = new Date(year,month,0).getDate();
     const daysInYear  = (year%4===0&&(year%100!==0||year%400===0))?366:365;
-    const target = Math.round((daysInMonth/daysInYear)*YEAR_TARGET);
+    const fullMonthTarget = Math.round((daysInMonth/daysInYear)*YEAR_TARGET);
+    // for current month, prorate target by days elapsed so far
+    const isCurrentMonth = (now.getFullYear()===year && now.getMonth()+1===month);
+    const target = isCurrentMonth
+      ? Math.round(fullMonthTarget * now.getDate() / daysInMonth)
+      : fullMonthTarget;
     const pctOfTarget = target ? (units/target)*100 : 0;
     const label = `${String(month).padStart(2,'0')}/${year}`;
-    return {label,units,target,pctOfTarget};
+    return {label, units, target, pctOfTarget, isCurrentMonth, daysInMonth, daysSoFar: now.getDate()};
   });
 
   // Production lines
@@ -261,7 +266,10 @@ function renderExec() {
     byLine[line].units += num(r['Final Units']);
     byLine[line].lots.add(r['Lot Number']);
   });
-  const lineEntries = Object.entries(byLine).sort((a,b)=>b[1].units-a[1].units);
+  const lineEntries = Object.entries(byLine).sort((a,b) => {
+    const na = parseInt(a[0].replace(/\D/g,'')), nb = parseInt(b[0].replace(/\D/g,''));
+    return na - nb;
+  });
   const maxLineUnits = lineEntries[0]?.[1].units || 1;
   const lineTotal = lineEntries.reduce((s,[,d])=>s+d.units,0);
 
@@ -363,10 +371,13 @@ function renderExec() {
           const over = m.pctOfTarget >= 100;
           const pc = over?'#3b6d11':'#a32d2d';
           const bw = Math.min(Math.round(m.pctOfTarget),100);
+          const targetLabel = m.isCurrentMonth
+            ? `${m.target.toLocaleString()} <span style="font-size:10px;color:var(--color-text-tertiary,#999)">(${m.daysSoFar}/${m.daysInMonth} days)</span>`
+            : m.target.toLocaleString();
           return `<tr>
             <td style="font-weight:500">${m.label}</td>
             <td style="text-align:right">${m.units.toLocaleString()}</td>
-            <td style="text-align:right;color:var(--color-text-secondary,#666)">${m.target.toLocaleString()}</td>
+            <td style="text-align:right;color:var(--color-text-secondary,#666)">${targetLabel}</td>
             <td style="text-align:right;font-weight:500;color:${pc}">${m.pctOfTarget.toFixed(2)}%</td>
             <td style="min-width:100px;padding:6px 10px">
               <div style="background:var(--color-background-secondary,#ececea);border-radius:3px;height:6px;overflow:hidden">
