@@ -349,15 +349,19 @@ function renderExec() {
   allRows.forEach(function(r){
     var d=new Date(r['Date']); if(isNaN(d)) return;
     if(d.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'})!==todayStr) return;
-    var lot=(r['Lot Number']||'').trim(); if(seenLots.has(lot)) return; seenLots.add(lot);
-    var lotData=lotMap[lot]; if(!lotData) return;
-    var st=(lotData.status||'').toLowerCase();
+    var lot=(r['Lot Number']||'').trim(); if(!lot||seenLots.has(lot)) return; seenLots.add(lot);
+    var lotData=lotMap[lot];
+    var product=lotData?lotData.product:(r['Product']||'');
+    var projected=lotData?lotData.projected:num(r['Projected Units']);
+    var finalUnits=lotData?lotData.finalUnits:num(r['Final Units']);
+    var status=lotData?lotData.status:(r['Complete or Partial']||'');
     var line=(r['Line']||'').trim();
+    var st=status.toLowerCase();
     if(st.includes('complete')||st.includes('partial')){
-      completedToday.push({product:lotData.product,projected:lotData.projected,finalUnits:lotData.finalUnits,status:lotData.status,line:line});
+      completedToday.push({product:product,projected:projected,finalUnits:finalUnits,status:status,line:line});
     } else {
       if(!runningByLine[line]) runningByLine[line]=[];
-      runningByLine[line].push({product:lotData.product,projected:lotData.projected});
+      runningByLine[line].push({product:product,projected:projected});
     }
   });
 
@@ -404,7 +408,6 @@ function renderExec() {
   var allLinesAvg=Object.values(lineAvg).reduce(function(s,v){return s+v;},0);
   var todayPct=allLinesAvg?Math.round((todayTotal/allLinesAvg)*100):0;
   var barW=Math.min(todayPct,100);
-  var barColor=dayComplete?(todayPct>=100?'#1D9E75':'#EF9F27'):'#378ADD';
   var statusLabel=dayComplete?'Day complete':'Day in progress';
   var statusColor=dayComplete?(todayPct>=100?'#1D9E75':'#EF9F27'):'#888780';
 
