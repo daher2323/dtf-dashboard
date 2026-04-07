@@ -647,10 +647,9 @@ function renderToday() {
     +'</div>'
     +'</div>';
 
-  // resolve per-line targets or fall back to avg
-  var dayTargetRow = dailyTargets[viewStr] || {};
+  var dayTargetRow = (dailyTargets && dailyTargets[viewStr]) || {};
   function lineGoal(line) {
-    var t = dayTargetRow[line];
+    var t = dayTargetRow[line] || 0;
     return t ? {value: t, isTarget: true} : {value: lineAvg[line]||0, isTarget: false};
   }
 
