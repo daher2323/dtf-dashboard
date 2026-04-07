@@ -369,7 +369,7 @@ function renderExec() {
     +'<div class="metric"><div class="label">Unique customers</div><div class="value">'+uniqueCustomers+'</div><div class="sub">across all lots</div></div>';
 
   // today's outlook
-  var lineOrder = lineEntries.map(function(e){return e[0];});
+  var lineOrder = sortedLines;
   var dialCardsHTML = lineOrder.map(function(line,i) {
     var k2=lk(line), color=LINE_COLOR[k2]||'#888780', bg=LINE_BG[k2]||'#2c2c2a', txt=LINE_TXT[k2]||'#e8e6e0', type=LINE_TYPE[k2]||'';
     var todayU=todayByLine[line]||0, avg=lineAvg[line]||0, pctA=avg?Math.round((todayU/avg)*100):0;
