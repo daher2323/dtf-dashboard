@@ -563,9 +563,15 @@ function renderToday() {
     return parseInt((a.line||'').replace(/\D/g,''))-parseInt((b.line||'').replace(/\D/g,''));
   });
 
-  var todayTotal=Object.values(todayByLine).reduce(function(s,v){return s+v;},0);
-  var allLinesAvg=d.avgPerDay;
-  var todayPct=allLinesAvg?Math.round((todayTotal/allLinesAvg)*100):0;
+  // total goal for banner — sum targets where set, avg where not
+  var totalGoal = ALL_LINES.reduce(function(s, line){
+    var goal = lineGoal(line);
+    return s + goal.value;
+  }, 0);
+  var allLinesHaveTarget = ALL_LINES.every(function(line){ return !!(dayTargetRow[line]); });
+  var bannerGoalLabel = allLinesHaveTarget ? '% of target' : '% of avg';
+
+  var todayPct = totalGoal ? Math.round((todayTotal/totalGoal)*100) : 0;
   var barW=Math.min(todayPct,100);
   var statusLabel=(!isLive||dayComplete)?(todayPct>=100?'Day complete':'Day complete'):'Day in progress';
   if(isLive&&!dayComplete) statusLabel='Day in progress';
@@ -689,9 +695,9 @@ function renderToday() {
     +'<div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:8px">'
     +'<div style="flex:1;text-align:center"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">'+(isLive?'Total units today':'Total units')+'</div><div style="font-size:26px;font-weight:500;color:#e8e6e0;line-height:1">'+todayTotal.toLocaleString()+'</div></div>'
     +'<div style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0;align-self:center"></div>'
-    +'<div style="flex:1;text-align:center"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Daily avg (all lines)</div><div style="font-size:18px;font-weight:500;color:#e8e6e0;line-height:1.2">'+allLinesAvg.toLocaleString()+'</div></div>'
+    +'<div style="flex:1;text-align:center"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">'+(allLinesHaveTarget?'Daily target (all lines)':'Daily avg (all lines)')+'</div><div style="font-size:18px;font-weight:500;color:#e8e6e0;line-height:1.2">'+totalGoal.toLocaleString()+'</div></div>'
     +'<div style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0;align-self:center"></div>'
-    +'<div style="flex:1;text-align:center"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">% of avg</div><div style="font-size:18px;font-weight:500;color:#e8e6e0;line-height:1.2">'+todayPct+'%</div></div>'
+    +'<div style="flex:1;text-align:center"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">'+bannerGoalLabel.toUpperCase()+'</div><div style="font-size:18px;font-weight:500;color:#e8e6e0;line-height:1.2">'+todayPct+'%</div></div>'
     +'<div style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0;align-self:center"></div>'
     +'<div style="flex:1;text-align:center"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Status</div><div style="font-size:13px;font-weight:500;color:'+statusColor+';line-height:1.4">'+statusLabel+'</div></div>'
     +'</div>'
