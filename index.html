@@ -51,6 +51,7 @@
   .badge.partial { background: #633806; color: #FAC775; }
   .badge.neg-dev { background: #791F1F; color: #F09595; }
   .badge.pos-dev { background: #0F6E56; color: #9FE1CB; }
+  @keyframes dtfPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
   .loading { text-align: center; padding: 3rem; color: #888780; }
   .pagination { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; color: #888780; }
   .pagination button { padding: 4px 10px; border: 0.5px solid #444441; border-radius: 6px; background: transparent; cursor: pointer; font-size: 12px; color: #e8e6e0; }
@@ -456,45 +457,87 @@ function prepData() {
   return {now,lots,completeLots,partialLots,totalUnits,totalProj,uniqueProds,uniqueCusts,totalLots,devs,avgDev,highDevCount,uniqDays,avgPerDay,total25,total25lots,comp25pct,avg25perDay,avgDev25,custs25,lineEntries,lineAvg,comp25};
 }
 
-function animateGauges(gaugeData) {
+function animateGauges(gaugeData, todayTotal, totalGoal, allLinesHaveTarget, barColor, statusLabel, statusColor) {
   var DURATION = 1200;
   var start = null;
   function easeOut(t){ return 1-Math.pow(1-t,3); }
+
+  function drawDial(canvas, color, track, frac) {
+    var ctx=canvas.getContext('2d');
+    var W=canvas.width,H=canvas.height,cx=W/2,cy=H-8,r=Math.min(cx,cy)-8,lw=11;
+    ctx.clearRect(0,0,W,H);
+    ctx.beginPath();ctx.arc(cx,cy,r,Math.PI,2*Math.PI);ctx.strokeStyle=track;ctx.lineWidth=lw;ctx.lineCap='round';ctx.stroke();
+    if(frac>0){ctx.beginPath();ctx.arc(cx,cy,r,Math.PI,Math.PI+Math.min(frac,1)*Math.PI);ctx.strokeStyle=color;ctx.lineWidth=lw;ctx.lineCap='round';ctx.stroke();}
+    var pct=Math.round(frac*100);
+    ctx.fillStyle='#888780';ctx.font='500 12px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(pct+'%',cx,cy-r*0.38);
+    return pct;
+  }
+
   function draw(ts) {
     if(!start) start=ts;
-    var t = Math.min((ts-start)/DURATION,1);
-    var e = easeOut(t);
+    var t=Math.min((ts-start)/DURATION,1);
+    var e=easeOut(t);
+
     gaugeData.forEach(function(g){
-      var canvas = document.getElementById(g.canvasId); if(!canvas) return;
-      var ctx = canvas.getContext('2d');
-      var W=canvas.width, H=canvas.height, cx=W/2, cy=H-8, r=Math.min(cx,cy)-8, lw=11;
-      ctx.clearRect(0,0,W,H);
-      ctx.beginPath(); ctx.arc(cx,cy,r,Math.PI,2*Math.PI); ctx.strokeStyle=g.track; ctx.lineWidth=lw; ctx.lineCap='round'; ctx.stroke();
-      var frac=g.avg?(g.units/g.avg):0, animFrac=Math.min(frac*e,1);
-      if(animFrac>0){ ctx.beginPath(); ctx.arc(cx,cy,r,Math.PI,Math.PI+animFrac*Math.PI); ctx.strokeStyle=g.color; ctx.lineWidth=lw; ctx.lineCap='round'; ctx.stroke(); }
-      var pct=Math.round(frac*e*100);
-      ctx.fillStyle='#888780'; ctx.font='500 12px system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(pct+'%',cx,cy-r*0.38);
-      var valEl=document.getElementById(g.valId); if(valEl) valEl.textContent=Math.round(g.units*e).toLocaleString();
-      var badgeEl=document.getElementById(g.badgeId); if(badgeEl) badgeEl.textContent=pct+(g.badgeSuffix||'% of avg');
+      var canvas=document.getElementById(g.canvasId); if(!canvas) return;
+      var frac=g.avg?(g.units/g.avg):0;
+      var animFrac=Math.min(frac*e,1);
+      var hitTarget=frac>=1;
+      var animColor=hitTarget?'#1D9E75':g.color;
+      var animTrack=hitTarget?'#085041':g.track;
+      var pct=drawDial(canvas,animColor,animTrack,animFrac);
+      var valEl=document.getElementById(g.valId); if(valEl){valEl.textContent=Math.round(g.units*e).toLocaleString();valEl.style.color=hitTarget?'#1D9E75':g.color;}
+      var badgeEl=document.getElementById(g.badgeId); if(badgeEl){badgeEl.textContent=pct+(g.badgeSuffix||'% of avg');badgeEl.style.background=hitTarget?'#085041':g.origBg;badgeEl.style.color=hitTarget?'#9FE1CB':g.origTxt;}
+      var cardEl=document.getElementById(g.cardId); if(cardEl){cardEl.style.background=hitTarget?'#04342C':'#141618';cardEl.style.border=hitTarget?'1.5px solid #1D9E75':'0.5px solid #2c2c2a';}
     });
-    if(t<1) requestAnimationFrame(draw);
-    else {
+
+    // banner progress
+    var totalPct=totalGoal?Math.round((todayTotal*e)/totalGoal*100):0;
+    var allHit=todayTotal>=totalGoal;
+    var bvPct=document.getElementById('banner-pct'); if(bvPct){bvPct.textContent=totalPct+'%';bvPct.style.color=allHit?'#9FE1CB':(totalPct>=100?'#1D9E75':totalPct>=80?'#EF9F27':'#e8e6e0');}
+    var bvTotal=document.getElementById('banner-total'); if(bvTotal){bvTotal.textContent=Math.round(todayTotal*e).toLocaleString();bvTotal.style.color=allHit?'#9FE1CB':'#e8e6e0';}
+    var barFill=document.getElementById('banner-bar'); if(barFill){barFill.style.width=Math.min(totalPct,100)+'%';barFill.style.background=barColor;}
+
+    if(t>=1){
+      // final — draw clean
       gaugeData.forEach(function(g){
         var canvas=document.getElementById(g.canvasId); if(!canvas) return;
-        var ctx=canvas.getContext('2d');
-        var W=canvas.width,H=canvas.height,cx=W/2,cy=H-8,r=Math.min(cx,cy)-8,lw=11;
-        ctx.clearRect(0,0,W,H);
-        ctx.beginPath();ctx.arc(cx,cy,r,Math.PI,2*Math.PI);ctx.strokeStyle=g.track;ctx.lineWidth=lw;ctx.lineCap='round';ctx.stroke();
         var frac=g.avg?(g.units/g.avg):0;
-        if(frac>0){ctx.beginPath();ctx.arc(cx,cy,r,Math.PI,Math.PI+Math.min(frac,1)*Math.PI);ctx.strokeStyle=g.color;ctx.lineWidth=lw;ctx.lineCap='round';ctx.stroke();}
-        var finalPct=Math.round(frac*100);
-        ctx.fillStyle='#888780';ctx.font='500 12px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.fillText(finalPct+'%',cx,cy-r*0.38);
+        var hitTarget=frac>=1;
+        drawDial(canvas,hitTarget?'#1D9E75':g.color,hitTarget?'#085041':g.track,frac);
         var valEl=document.getElementById(g.valId); if(valEl) valEl.textContent=g.units.toLocaleString();
-        var badgeEl=document.getElementById(g.badgeId); if(badgeEl) badgeEl.textContent=finalPct+(g.badgeSuffix||'% of avg');
+        var badgeEl=document.getElementById(g.badgeId); if(badgeEl) badgeEl.textContent=Math.round(frac*100)+(g.badgeSuffix||'% of avg');
+        // staggered checkmark pop
+        if(hitTarget){
+          (function(gRef,delay){
+            setTimeout(function(){
+              var cb=document.getElementById(gRef.checkId); if(cb) cb.style.cssText='position:absolute;top:8px;right:8px;opacity:1;transform:scale(1);transition:opacity .4s,transform .4s cubic-bezier(.34,1.56,.64,1)';
+            },delay);
+          })(g, g.idx*140);
+        }
       });
+
+      // banner final
+      var bvStatus=document.getElementById('banner-status');
+      if(bvStatus){bvStatus.textContent=statusLabel;bvStatus.style.color=statusColor;}
+      if(allHit){
+        var banner=document.getElementById('today-banner');
+        if(banner){banner.style.background='#085041';banner.style.border='1.5px solid #1D9E75';}
+        ['banner-lbl-total','banner-lbl-goal','banner-lbl-pct','banner-lbl-status'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.color='#5DCAA5';});
+        ['banner-div1','banner-div2','banner-div3'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.background='#0F6E56';});
+        var barTrack=document.getElementById('banner-track');if(barTrack)barTrack.style.background='#0F6E56';
+        // bullseye + pulse
+        setTimeout(function(){
+          var bs=document.getElementById('banner-bullseye');
+          if(bs) bs.style.cssText='opacity:1;transform:scale(1) rotate(0deg);transition:opacity .5s,transform .5s cubic-bezier(.34,1.56,.64,1);display:inline-flex;align-items:center;margin-left:6px;';
+          var bvT=document.getElementById('banner-total');
+          if(bvT){bvT.style.animation='dtfPulse .6s ease-in-out 2';}
+        },400);
+      }
+      return;
     }
+    requestAnimationFrame(draw);
   }
   requestAnimationFrame(draw);
 }
@@ -695,17 +738,20 @@ function renderToday() {
     +'<div style="border-top:0.5px solid #2c2c2a;margin-top:.75rem;padding-top:.75rem">'
     +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">Production by line</div>'
     +'<div style="display:flex;gap:12px;margin-bottom:10px">'+gaugesHTML+'</div>'
-    +'<div style="background:#141618;border:0.5px solid #2c2c2a;border-radius:10px;padding:.875rem 1.25rem;margin-bottom:1rem">'
+    +'<div id="today-banner" style="background:#141618;border:0.5px solid #2c2c2a;border-radius:10px;padding:.875rem 1.25rem;margin-bottom:1rem;transition:background .5s,border-color .5s">'
     +'<div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:8px">'
-    +'<div style="flex:1;text-align:center"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">'+(isLive?'Total units today':'Total units')+'</div><div style="font-size:26px;font-weight:500;color:#e8e6e0;line-height:1">'+todayTotal.toLocaleString()+'</div></div>'
-    +'<div style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0;align-self:center"></div>'
-    +'<div style="flex:1;text-align:center"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">'+(allLinesHaveTarget?'Daily target (all lines)':'Daily avg (all lines)')+'</div><div style="font-size:18px;font-weight:500;color:#e8e6e0;line-height:1.2">'+totalGoal.toLocaleString()+'</div></div>'
-    +'<div style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0;align-self:center"></div>'
-    +'<div style="flex:1;text-align:center"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">'+bannerGoalLabel.toUpperCase()+'</div><div style="font-size:18px;font-weight:500;color:#e8e6e0;line-height:1.2">'+todayPct+'%</div></div>'
-    +'<div style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0;align-self:center"></div>'
-    +'<div style="flex:1;text-align:center"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Status</div><div style="font-size:13px;font-weight:500;color:'+statusColor+';line-height:1.4">'+statusLabel+'</div></div>'
+    +'<div style="flex:1;text-align:center"><div id="banner-lbl-total" style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;transition:color .4s">'+(isLive?'Total units today':'Total units')+'</div>'
+    +'<div style="display:flex;align-items:center;justify-content:center;gap:6px"><span id="banner-total" style="font-size:26px;font-weight:500;color:#e8e6e0;line-height:1;transition:color .4s">0</span>'
+    +'<span id="banner-bullseye" style="opacity:0;transform:scale(0) rotate(-20deg);display:inline-flex;align-items:center;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="10" stroke="#1D9E75" stroke-width="1.5"/><circle cx="11" cy="11" r="6.5" stroke="#1D9E75" stroke-width="1.5"/><circle cx="11" cy="11" r="3" fill="#1D9E75"/></svg></span>'
+    +'</div></div>'
+    +'<div id="banner-div1" style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0;align-self:center;transition:background .4s"></div>'
+    +'<div style="flex:1;text-align:center"><div id="banner-lbl-goal" style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;transition:color .4s">'+(allLinesHaveTarget?'Daily target (all lines)':'Daily avg (all lines)')+'</div><div style="font-size:18px;font-weight:500;color:#e8e6e0;line-height:1.2;transition:color .4s">'+totalGoal.toLocaleString()+'</div></div>'
+    +'<div id="banner-div2" style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0;align-self:center;transition:background .4s"></div>'
+    +'<div style="flex:1;text-align:center"><div id="banner-lbl-pct" style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;transition:color .4s">'+bannerGoalLabel.toUpperCase()+'</div><div id="banner-pct" style="font-size:18px;font-weight:500;color:#e8e6e0;line-height:1.2;transition:color .4s">0%</div></div>'
+    +'<div id="banner-div3" style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0;align-self:center;transition:background .4s"></div>'
+    +'<div style="flex:1;text-align:center"><div id="banner-lbl-status" style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;transition:color .4s">Status</div><div id="banner-status" style="font-size:13px;font-weight:500;color:'+statusColor+';line-height:1.4;transition:color .4s">'+statusLabel+'</div></div>'
     +'</div>'
-    +'<div style="background:#2c2c2a;border-radius:6px;height:8px;overflow:hidden"><div style="height:100%;width:'+barW+'%;background:'+barColor+';border-radius:6px;transition:width .4s"></div></div>'
+    +'<div id="banner-track" style="background:#2c2c2a;border-radius:6px;height:8px;overflow:hidden;transition:background .4s"><div id="banner-bar" style="height:100%;width:0%;background:'+barColor+';border-radius:6px;transition:width 1.2s cubic-bezier(.4,0,.2,1),background .4s"></div></div>'
     +'</div>'
     +'<div style="border-top:0.5px solid #2c2c2a;padding-top:.75rem">'
     +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">'+(isLive?'Completed today':'Completed')+'</div>'
@@ -736,15 +782,17 @@ function renderToday() {
 
   var gaugeData = ALL_LINES.map(function(line,i){
     var k2=lk(line);
-    var goal = lineGoal(line);
+    var goal=lineGoal(line);
     return {
       canvasId:'dial_'+i, valId:'gval_'+i, badgeId:'gbadge_'+i,
+      cardId:'gcard_'+i, checkId:'gcheck_'+i, idx:i,
       color:LINE_COLOR[k2]||'#888780', track:LINE_TRACK[k2]||'#2c2c2a',
+      origBg:LINE_BG[k2]||'#2c2c2a', origTxt:LINE_TXT[k2]||'#e8e6e0',
       units:todayByLine[line]||0, avg:goal.value,
       badgeSuffix: goal.isTarget ? '% of target' : '% of avg'
     };
   });
-  animateGauges(gaugeData);
+  animateGauges(gaugeData, todayTotal, totalGoal, allLinesHaveTarget, barColor, statusLabel, statusColor);
 }
 
 function renderPerformance() {
