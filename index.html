@@ -335,6 +335,7 @@ function prepData() {
 function renderToday() {
   var d = prepData();
   var now=d.now, lineAvg=d.lineAvg, lineEntries=d.lineEntries;
+  var totalUnits=d.totalUnits, uniqDays=d.uniqDays;
 
   var todayStr=now.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
   var todayFmt=now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
@@ -384,8 +385,43 @@ function renderToday() {
   var statusLabel=dayComplete?'Day complete':'Day in progress';
   var statusColor=dayComplete?(todayPct>=100?'#1D9E75':'#EF9F27'):'#888780';
 
-  var html=
-    '<div class="full-card">'
+  var dayOfYear=Math.ceil((now-new Date(now.getFullYear(),0,1))/86400000);
+  var yearProj=Math.round((d.totalUnits/dayOfYear)*365);
+  var targetPct=Math.round((yearProj/YEAR_TARGET)*100);
+  var onTrack=yearProj>=YEAR_TARGET;
+  var actualPct=yearProj?((d.totalUnits/yearProj)*100):0;
+  var tOnBar=yearProj?((YEAR_TARGET/yearProj)*100):100;
+  var total25=d.total25, avg25perDay=d.avg25perDay;
+  var yoyPct=total25?((d.totalUnits-total25)/total25*100):0;
+  var yoySign=yoyPct>=0?'+':'';
+
+  var contextBanner=
+    '<div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:12px;padding:.875rem 1.25rem;margin-bottom:10px">'
+    +'<div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">'
+    +'<div style="flex:1;min-width:120px"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Units produced YTD</div>'
+    +'<div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:22px;font-weight:500;color:#e8e6e0">'+d.totalUnits.toLocaleString()+'</span>'
+    +'<span style="font-size:11px;font-weight:500;padding:1px 6px;border-radius:6px;background:'+(yoyPct>=0?'#085041':'#791F1F')+';color:'+(yoyPct>=0?'#9FE1CB':'#F09595')+'">'+yoySign+yoyPct.toFixed(1)+'% vs 2025</span></div></div>'
+    +'<div style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0"></div>'
+    +'<div style="flex:1;min-width:120px"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Year-end projection</div>'
+    +'<div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:22px;font-weight:500;color:'+(onTrack?'#1D9E75':'#EF9F27')+'">'+yearProj.toLocaleString()+'</span>'
+    +'<span style="font-size:11px;color:#5f5e5a">target: 3,927,000</span></div></div>'
+    +'<div style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0"></div>'
+    +'<div style="flex:1;min-width:80px"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">vs target</div>'
+    +'<div style="font-size:22px;font-weight:500;color:'+(onTrack?'#1D9E75':'#EF9F27')+'">'+(onTrack?'+':'')+targetPct+'%</div></div>'
+    +'<div style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0"></div>'
+    +'<div style="flex:2;min-width:160px">'
+    +'<div style="display:flex;justify-content:space-between;font-size:10px;color:#888780;margin-bottom:5px"><span>Day '+dayOfYear+' of 365</span><span style="color:'+(onTrack?'#1D9E75':'#EF9F27')+';font-weight:500">'+(onTrack?'On pace':'Behind pace')+'</span></div>'
+    +'<div style="background:#2c2c2a;border-radius:6px;height:8px;position:relative;overflow:hidden">'
+    +'<div style="position:absolute;top:0;left:0;height:100%;width:100%;background:'+(onTrack?'#1D9E75':'#EF9F27')+';opacity:0.15;border-radius:6px"></div>'
+    +'<div style="position:absolute;top:0;left:0;height:100%;width:'+actualPct.toFixed(1)+'%;background:#378ADD;border-radius:6px"></div>'
+    +'<div style="position:absolute;top:0;left:'+tOnBar.toFixed(1)+'%;width:1.5px;height:100%;background:#e8e6e0;opacity:0.4"></div>'
+    +'</div>'
+    +'<div style="display:flex;justify-content:space-between;font-size:10px;color:#5f5e5a;margin-top:4px"><span style="color:#378ADD">'+d.totalUnits.toLocaleString()+' to date</span><span>target: 3,927,000</span></div>'
+    +'</div>'
+    +'</div></div>';
+
+  var html= contextBanner
+    +'<div class="full-card">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">'
     +'<div style="display:flex;align-items:center;gap:8px"><div style="width:8px;height:8px;border-radius:50%;background:#1D9E75"></div>'
     +'<h3 style="margin:0;font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em">Today\'s outlook</h3>'
