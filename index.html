@@ -215,11 +215,14 @@ function fetchData() {
 
 function buildProductionDays() {
   var now = new Date();
-  var todayStr = now.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+  var todayStr = (now.getMonth()+1)+'/'+now.getDate()+'/'+now.getFullYear();
   var seen = new Set();
   allRows.forEach(function(r){
     var d = (r['Date']||'').trim();
-    if (d) seen.add(d);
+    if (!d) return;
+    var dt = new Date(d); if (isNaN(dt)) return;
+    var norm = (dt.getMonth()+1)+'/'+dt.getDate()+'/'+dt.getFullYear();
+    seen.add(norm);
   });
   var days = Array.from(seen).sort(function(a,b){ return new Date(a)-new Date(b); });
   if (!seen.has(todayStr)) days.push(todayStr);
@@ -285,12 +288,91 @@ function setSub(v) {
 
 function navDay(dir) {
   selectedDayIdx = Math.max(0, Math.min(productionDays.length-1, selectedDayIdx+dir));
+  var scrollY = window.scrollY;
   render();
+  window.scrollTo(0, scrollY);
 }
 
 function goLive() {
   selectedDayIdx = productionDays.length - 1;
+  var scrollY = window.scrollY;
   render();
+  window.scrollTo(0, scrollY);
+}
+
+function pickDay(str) {
+  var idx = productionDays.indexOf(str);
+  if (idx !== -1) selectedDayIdx = idx;
+  closePicker();
+  var scrollY = window.scrollY;
+  render();
+  window.scrollTo(0, scrollY);
+}
+
+function openPicker() {
+  var existing = document.getElementById('day-picker');
+  if (existing) { closePicker(); return; }
+  var now = new Date();
+  var todayStr = (now.getMonth()+1)+'/'+now.getDate()+'/'+now.getFullYear();
+  var selected = productionDays[selectedDayIdx];
+
+  // group days by month
+  var byMonth = {};
+  productionDays.forEach(function(d){
+    var dt = new Date(d); if(isNaN(dt)) return;
+    var k = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');
+    if(!byMonth[k]) byMonth[k] = {label: dt.toLocaleDateString('en-US',{month:'long',year:'numeric'}), days:[]};
+    byMonth[k].days.push({str:d, dt:dt});
+  });
+
+  var monthsHTML = Object.keys(byMonth).sort().reverse().map(function(k){
+    var mo = byMonth[k];
+    // build a calendar grid
+    var firstDay = new Date(mo.days[0].dt.getFullYear(), mo.days[0].dt.getMonth(), 1);
+    var daysInMonth = new Date(firstDay.getFullYear(), firstDay.getMonth()+1, 0).getDate();
+    var startDow = firstDay.getDay();
+    var dataByDay = {};
+    mo.days.forEach(function(d){ dataByDay[d.dt.getDate()] = d.str; });
+
+    var cells = '';
+    for(var i=0;i<startDow;i++) cells += '<div></div>';
+    for(var day=1;day<=daysInMonth;day++){
+      var str = dataByDay[day];
+      var isSelected = str && str===selected;
+      var isToday = str && str===todayStr;
+      var hasData = !!str;
+      var bg = isSelected?'#1D9E75':isToday?'#0C447C':'transparent';
+      var color = isSelected?'#fff':isToday?'#85B7EB':hasData?'#e8e6e0':'#444441';
+      var cursor = hasData?'pointer':'default';
+      var onclick = hasData?'pickDay(\''+str+'\')':'';
+      cells += '<div onclick="'+onclick+'" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:12px;font-weight:'+(isSelected||isToday?'500':'400')+';color:'+color+';background:'+bg+';cursor:'+cursor+'">' + day + '</div>';
+    }
+
+    return '<div style="margin-bottom:1rem">'
+      +'<div style="font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">'+mo.label+'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(7,30px);gap:2px;">'
+      +'<div style="font-size:10px;color:#5f5e5a;text-align:center">Su</div><div style="font-size:10px;color:#5f5e5a;text-align:center">Mo</div><div style="font-size:10px;color:#5f5e5a;text-align:center">Tu</div><div style="font-size:10px;color:#5f5e5a;text-align:center">We</div><div style="font-size:10px;color:#5f5e5a;text-align:center">Th</div><div style="font-size:10px;color:#5f5e5a;text-align:center">Fr</div><div style="font-size:10px;color:#5f5e5a;text-align:center">Sa</div>'
+      +cells
+      +'</div></div>';
+  }).join('');
+
+  var picker = document.createElement('div');
+  picker.id = 'day-picker';
+  picker.style.cssText = 'position:absolute;z-index:1000;background:#1e2124;border:0.5px solid #444441;border-radius:12px;padding:1rem;max-height:400px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4);min-width:240px;';
+  picker.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem"><span style="font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em">Select date</span><button onclick="closePicker()" style="background:transparent;border:none;color:#888780;cursor:pointer;font-size:16px;line-height:1;padding:0">&#x2715;</button></div>'+monthsHTML;
+  picker.addEventListener('click', function(e){ e.stopPropagation(); });
+
+  var anchor = document.getElementById('date-nav-anchor');
+  if (anchor) {
+    anchor.style.position = 'relative';
+    anchor.appendChild(picker);
+  }
+  setTimeout(function(){ document.addEventListener('click', closePicker, {once:true}); }, 0);
+}
+
+function closePicker() {
+  var p = document.getElementById('day-picker');
+  if (p) p.remove();
 }
 
 function render() {
@@ -530,10 +612,10 @@ function renderToday() {
   var prevDisabled = selectedDayIdx<=0;
   var nextDisabled = isLive;
   var dateNavHTML=
-    '<div style="display:flex;align-items:center;gap:6px">'
+    '<div style="display:flex;align-items:center;gap:6px" id="date-nav-anchor">'
     +'<button onclick="navDay(-1)" '+(prevDisabled?'disabled':'')+' style="width:28px;height:28px;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:'+(prevDisabled?'default':'pointer')+';color:'+(prevDisabled?'#444441':'#e8e6e0')+';font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8249;</button>'
-    +'<div style="text-align:center;min-width:150px">'
-    +'<div style="font-size:13px;font-weight:500;color:#e8e6e0">'+viewFmt+'</div>'
+    +'<div onclick="openPicker()" style="text-align:center;min-width:150px;cursor:pointer;padding:4px 8px;border-radius:8px;border:0.5px solid #444441;background:transparent;transition:background .15s;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'transparent\'">'
+    +'<div style="font-size:13px;font-weight:500;color:#e8e6e0">'+viewFmt+' &#x25BE;</div>'
     +(dayLabel?'<div style="font-size:10px;color:#5f5e5a;margin-top:2px">'+dayLabel+'</div>':'')
     +'</div>'
     +'<button onclick="navDay(1)" '+(nextDisabled?'disabled':'')+' style="width:28px;height:28px;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:'+(nextDisabled?'default':'pointer')+';color:'+(nextDisabled?'#444441':'#e8e6e0')+';font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8250;</button>'
