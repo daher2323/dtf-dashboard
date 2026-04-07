@@ -295,15 +295,20 @@ function renderExec() {
   allRows25.forEach(function(r){
     var d=new Date(r['Date']); if(isNaN(d)) return;
     var k=String(d.getMonth()+1).padStart(2,'0');
-    if(!byMonth25[k]) byMonth25[k]={units:0};
+    if(!byMonth25[k]) byMonth25[k]={units:0,mtdUnits:0};
     byMonth25[k].units+=num(r['Final Units']);
+    // MTD: only count days up to today's day-of-month for the current month
+    var isCurMonth=(now.getMonth()+1===parseInt(k));
+    if(!isCurMonth||d.getDate()<=now.getDate()) byMonth25[k].mtdUnits+=num(r['Final Units']);
   });
   var monthRows=Object.keys(byMonth26).sort().map(function(k){
     var mo=byMonth26[k], dim=new Date(mo.year,mo.month,0).getDate(), diy=(mo.year%4===0&&(mo.year%100!==0||mo.year%400===0))?366:365;
     var fmtgt=Math.round((dim/diy)*YEAR_TARGET), isCur=(now.getFullYear()===mo.year&&now.getMonth()+1===mo.month);
     var tgt=isCur?Math.round(fmtgt*now.getDate()/dim):fmtgt, pctT=tgt?(mo.units/tgt)*100:0;
-    var u25=(byMonth25[k]||{units:0}).units;
+    var mo25=byMonth25[k]||{units:0,mtdUnits:0};
+    var u25=isCur?mo25.mtdUnits:mo25.units;
     var yoyDiff=u25?((mo.units-u25)/u25*100):null;
+    var tgtHTML=isCur?m.target.toLocaleString()+'<sup style="color:#9FE1CB;font-size:9px"> *</sup>':m.target.toLocaleString();
     return {label:k+'/'+mo.year,units:mo.units,target:tgt,fullMonthTarget:fmtgt,pctOfTarget:pctT,isCurrentMonth:isCur,daysInMonth:dim,daysSoFar:now.getDate(),units25:u25,yoyDiff:yoyDiff};
   });
 
@@ -435,8 +440,8 @@ function renderExec() {
     var yoyDelta='<td style="text-align:right">';
     if(m.yoyDiff!==null){var yPos=m.yoyDiff>=0,yBg=yPos?'#085041':'#791F1F',yTxt=yPos?'#9FE1CB':'#F09595';yoyDelta+='<span style="display:inline-block;padding:1px 6px;border-radius:6px;font-size:10px;font-weight:500;background:'+yBg+';color:'+yTxt+'">'+(yPos?'+':'')+m.yoyDiff.toFixed(1)+'%</span>';}else yoyDelta+='\u2014';
     yoyDelta+='</td>';
-    var units25Str=m.units25?'<span style="color:#5f5e5a;font-weight:400"> ('+m.units25.toLocaleString()+')</span>':'';
-    return '<tr><td style="font-weight:500">'+m.label+'</td><td style="text-align:right">'+m.units.toLocaleString()+units25Str+'</td><td style="text-align:right;color:#888780">'+m.target.toLocaleString()+'</td><td style="text-align:right"><span class="badge" style="background:'+pBg+';color:'+pTxt+'">'+m.pctOfTarget.toFixed(2)+'%</span></td><td style="min-width:100px;padding:6px 10px"><div style="background:#2c2c2a;border-radius:3px;height:6px;overflow:hidden"><div style="height:100%;width:'+bw+'%;background:'+bCol+';border-radius:3px"></div></div></td>'+yoyDelta+'</tr>';
+    var units25Str=u25?'<span style="color:#5f5e5a;font-weight:400"> ('+u25.toLocaleString()+(m.isCurrentMonth?' MTD':'')+')':'</span>':'';
+    return '<tr><td style="font-weight:500">'+m.label+'</td><td style="text-align:right">'+m.units.toLocaleString()+units25Str+'</td><td style="text-align:right;color:#888780">'+tgtHTML+'</td><td style="text-align:right"><span class="badge" style="background:'+pBg+';color:'+pTxt+'">'+m.pctOfTarget.toFixed(2)+'%</span></td><td style="min-width:100px;padding:6px 10px"><div style="background:#2c2c2a;border-radius:3px;height:6px;overflow:hidden"><div style="height:100%;width:'+bw+'%;background:'+bCol+';border-radius:3px"></div></div></td>'+yoyDelta+'</tr>';
   }).join('');
 
   var curMo=monthRows.find(function(m){return m.isCurrentMonth;}),asterisk=curMo?'<div style="font-size:10px;color:#5f5e5a;margin-top:10px;padding-top:8px;border-top:0.5px solid #2c2c2a"><sup style="color:#9FE1CB">*</sup> '+curMo.label+' target adjusted for month-to-date ('+curMo.daysSoFar+'/'+curMo.daysInMonth+' days). Full month target: '+curMo.fullMonthTarget.toLocaleString()+'.</div>':'';
