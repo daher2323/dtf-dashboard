@@ -462,22 +462,23 @@ function renderToday() {
     +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">Completed today</div>'
     +(completedToday.length===0
       ? '<div style="font-size:12px;color:#5f5e5a;font-style:italic;padding:6px 0">No completed lots yet today</div>'
-      : completedToday.map(function(l){
-          var dev=l.projected?((l.finalUnits-l.projected)/l.projected*100):null;
-          var devS=dev!==null?(dev>0?'+':'')+dev.toFixed(1)+'%':'—';
-          var devBg=dev===null?'#2c2c2a':Math.abs(dev)<=2?'#2c2c2a':dev<0?'#791F1F':'#0F6E56';
-          var devTxt=dev===null?'#888780':Math.abs(dev)<=2?'#888780':dev<0?'#F09595':'#9FE1CB';
-          var st=(l.status||'').toLowerCase();
-          var stBg=st.includes('complete')?'#0F6E56':'#633806', stTxt=st.includes('complete')?'#9FE1CB':'#FAC775';
-          var k2=lk(l.line),bg=LINE_BG[k2]||'#2c2c2a',txt=LINE_TXT[k2]||'#e8e6e0';
-          return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:0.5px solid #2c2c2a;font-size:12px">'
-            +'<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:6px;white-space:nowrap;background:'+bg+';color:'+txt+'">'+l.line+'</span>'
-            +'<span style="font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+l.product+'</span>'
-            +'<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:10px;background:'+stBg+';color:'+stTxt+';flex-shrink:0;width:64px;text-align:center;display:inline-block">'+l.status+'</span>'
-            +'<span style="white-space:nowrap;color:#e8e6e0;width:160px;text-align:right;flex-shrink:0">'+l.finalUnits.toLocaleString()+' <span style="color:#5f5e5a;font-size:11px">/ '+(l.projected?l.projected.toLocaleString():'—')+' proj</span></span>'
-            +'<span style="font-size:11px;font-weight:500;padding:2px 7px;border-radius:8px;white-space:nowrap;background:'+devBg+';color:'+devTxt+'">'+devS+'</span>'
-            +'</div>';
-        }).join('')
+      : '<div style="display:grid;grid-template-columns:80px 1fr 72px 170px 58px;gap:0;">'
+        + completedToday.map(function(l){
+            var dev=l.projected?((l.finalUnits-l.projected)/l.projected*100):null;
+            var devS=dev!==null?(dev>0?'+':'')+dev.toFixed(1)+'%':'—';
+            var devBg=dev===null?'#2c2c2a':Math.abs(dev)<=2?'#2c2c2a':dev<0?'#791F1F':'#0F6E56';
+            var devTxt=dev===null?'#888780':Math.abs(dev)<=2?'#888780':dev<0?'#F09595':'#9FE1CB';
+            var st=(l.status||'').toLowerCase();
+            var stBg=st.includes('complete')?'#0F6E56':'#633806', stTxt=st.includes('complete')?'#9FE1CB':'#FAC775';
+            var k2=lk(l.line),bg=LINE_BG[k2]||'#2c2c2a',txt=LINE_TXT[k2]||'#e8e6e0';
+            var cellStyle='padding:7px 8px;border-bottom:0.5px solid #2c2c2a;display:flex;align-items:center;font-size:12px;';
+            return '<div style="'+cellStyle+'"><span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:6px;white-space:nowrap;background:'+bg+';color:'+txt+'">'+l.line+'</span></div>'
+              +'<div style="'+cellStyle+';min-width:0;"><span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+l.product+'</span></div>'
+              +'<div style="'+cellStyle+';justify-content:center;"><span style="font-size:10px;font-weight:500;padding:2px 0;border-radius:10px;background:'+stBg+';color:'+stTxt+';text-align:center;width:64px;display:inline-block">'+l.status+'</span></div>'
+              +'<div style="'+cellStyle+';justify-content:flex-end;white-space:nowrap;">'+l.finalUnits.toLocaleString()+' <span style="color:#5f5e5a;font-size:11px;margin-left:3px">/ '+(l.projected?l.projected.toLocaleString():'—')+' proj</span></div>'
+              +'<div style="'+cellStyle+';justify-content:flex-end;"><span style="font-size:11px;font-weight:500;padding:2px 6px;border-radius:8px;white-space:nowrap;background:'+devBg+';color:'+devTxt+'">'+devS+'</span></div>';
+          }).join('')
+        +'</div>'
     )+'</div>'
     +'</div>';
 
