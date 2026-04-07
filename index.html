@@ -361,7 +361,10 @@ function renderExec() {
     }
   });
 
-  // jar mix
+  completedToday.sort(function(a,b){
+    var an=parseInt((a.line||'').replace(/\D/g,'')), bn=parseInt((b.line||'').replace(/\D/g,''));
+    return an-bn;
+  });
   var byJar={};
   lots.forEach(function(l){var k2=jarSizeKey(l.jarSize);if(!k2)return;byJar[k2]=(byJar[k2]||0)+l.finalUnits;});
   var jarEntries=Object.entries(byJar).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
@@ -421,16 +424,19 @@ function renderExec() {
         +'<div style="display:inline-block;margin-top:6px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;background:'+bg+';color:'+txt+'">'+pctA+'% of avg</div></div>';
     }).join('')+'</div>'
     // total banner
-    +'<div style="background:#141618;border:0.5px solid #2c2c2a;border-radius:10px;padding:.75rem 1.25rem;display:flex;align-items:center;gap:24px;margin-bottom:1rem;flex-wrap:wrap">'
-    +'<div><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Total units today</div><div style="font-size:26px;font-weight:500;color:#378ADD;line-height:1">'+todayTotal.toLocaleString()+'</div></div>'
-    +'<div style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0"></div>'
+    +'<div style="background:#141618;border:0.5px solid #2c2c2a;border-radius:10px;padding:.875rem 1.25rem;margin-bottom:1rem">'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap;gap:8px">'
+    +'<div style="display:flex;gap:32px;align-items:flex-end">'
+    +'<div><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Total units today</div><div style="font-size:26px;font-weight:500;color:#e8e6e0;line-height:1">'+todayTotal.toLocaleString()+'</div></div>'
+    +'<div style="width:0.5px;background:#2c2c2a;height:32px;flex-shrink:0"></div>'
     +'<div><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Daily avg (all lines)</div><div style="font-size:16px;font-weight:500;color:#e8e6e0">'+allLinesAvg.toLocaleString()+'</div></div>'
-    +'<div style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0"></div>'
+    +'<div style="width:0.5px;background:#2c2c2a;height:32px;flex-shrink:0"></div>'
     +'<div><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">% of avg</div><div style="font-size:16px;font-weight:500;color:'+barColor+'">'+todayPct+'%</div></div>'
-    +'<div style="margin-left:auto;min-width:160px">'
-    +'<div style="background:#2c2c2a;border-radius:6px;height:8px;overflow:hidden;margin-bottom:4px"><div style="height:100%;width:'+barW+'%;background:'+barColor+';border-radius:6px;transition:width .4s"></div></div>'
-    +'<div style="font-size:10px;color:'+statusColor+';text-align:right;font-weight:500">'+statusLabel+'</div>'
-    +'</div></div>'
+    +'</div>'
+    +'<div style="font-size:10px;color:'+statusColor+';font-weight:500">'+statusLabel+'</div>'
+    +'</div>'
+    +'<div style="background:#2c2c2a;border-radius:6px;height:8px;overflow:hidden"><div style="height:100%;width:'+barW+'%;background:'+barColor+';border-radius:6px;transition:width .4s"></div></div>'
+    +'</div>'
     // currently running
     +'<div style="border-top:0.5px solid #2c2c2a;padding-top:.75rem;margin-bottom:.75rem">'
     +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">Currently running</div>'
