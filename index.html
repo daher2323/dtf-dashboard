@@ -353,7 +353,103 @@ function renderExec() {
   var top10Cust = Object.entries(byCust).sort(function(a,b) { return b[1].units - a[1].units; }).slice(0,10);
   var maxCustUnits = top10Cust[0] ? top10Cust[0][1].units : 1;
 
-  var metricsHTML =
+  // today's outlook
+  var todayStr = now.toLocaleDateString('en-US', { month:'2-digit', day:'2-digit', year:'numeric' });
+  var todayFmt = now.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+
+  // units produced today per line (from allRows)
+  var todayByLine = {};
+  allRows.forEach(function(r) {
+    var rDate = new Date(r['Date']);
+    if (isNaN(rDate)) return;
+    var rStr = rDate.toLocaleDateString('en-US', { month:'2-digit', day:'2-digit', year:'numeric' });
+    if (rStr !== todayStr) return;
+    var line = (r['Line']||'').trim();
+    if (!line) return;
+    if (!todayByLine[line]) todayByLine[line] = 0;
+    todayByLine[line] += num(r['Final Units']);
+  });
+
+  // avg per day per line = total line units / uniqueProductionDays
+  var lineAvgPerDay = {};
+  lineEntries.forEach(function(entry) {
+    lineAvgPerDay[entry[0]] = uniqueProductionDays ? Math.round(entry[1].units / uniqueProductionDays) : 0;
+  });
+
+  // currently running: lots with today's date and no Complete status
+  var currentlyRunning = [];
+  var seenLots = new Set();
+  allRows.forEach(function(r) {
+    var rDate = new Date(r['Date']);
+    if (isNaN(rDate)) return;
+    var rStr = rDate.toLocaleDateString('en-US', { month:'2-digit', day:'2-digit', year:'numeric' });
+    if (rStr !== todayStr) return;
+    var lot = (r['Lot Number']||'').trim();
+    if (seenLots.has(lot)) return;
+    seenLots.add(lot);
+    var lotData = lotMap[lot];
+    if (!lotData) return;
+    var st = (lotData.status||'').toLowerCase();
+    if (st.includes('complete')) return;
+    currentlyRunning.push({
+      line: (r['Line']||'').trim(),
+      product: lotData.product,
+      projected: lotData.projected,
+      lot: lot
+    });
+  });
+
+  // build dial+card HTML for each line
+  var lineOrder = lineEntries.map(function(e) { return e[0]; });
+  var lineColorMap = { 'line#1':'#1D9E75', 'line1':'#1D9E75', 'line#2':'#378ADD', 'line2':'#378ADD', 'line#4':'#7F77DD', 'line4':'#7F77DD' };
+  var lineBgMap   = { 'line#1':'#085041', 'line1':'#085041', 'line#2':'#0C447C', 'line2':'#0C447C', 'line#4':'#3C3489', 'line4':'#3C3489' };
+  var lineTxtMap  = { 'line#1':'#9FE1CB', 'line1':'#9FE1CB', 'line#2':'#85B7EB', 'line2':'#85B7EB', 'line#4':'#AFA9EC', 'line4':'#AFA9EC' };
+  var lineTypeMap = { 'line#1':'Powder', 'line1':'Powder', 'line#2':'Capsules', 'line2':'Capsules', 'line#4':'Powder', 'line4':'Powder' };
+
+  var dialCards = lineOrder.map(function(line, i) {
+    var lk = line.replace(/\s/g,'').toLowerCase();
+    var color = lineColorMap[lk] || '#888780';
+    var bg    = lineBgMap[lk]   || '#2c2c2a';
+    var txt   = lineTxtMap[lk]  || '#e8e6e0';
+    var type  = lineTypeMap[lk] || '';
+    var todayUnits = todayByLine[line] || 0;
+    var avg = lineAvgPerDay[line] || 0;
+    var pctOfAvg = avg ? Math.round((todayUnits / avg) * 100) : 0;
+    return '<div style="flex:1;background:#141618;border:0.5px solid #2c2c2a;border-radius:10px;padding:1rem;text-align:center">'
+      + '<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">' + line + (type?' \u2014 '+type:'') + '</div>'
+      + '<canvas id="dial_' + i + '" width="120" height="70" style="display:block;margin:0 auto .5rem"></canvas>'
+      + '<div style="font-size:20px;font-weight:500;color:' + color + ';margin-bottom:2px">' + todayUnits.toLocaleString() + '</div>'
+      + '<div style="font-size:10px;color:#5f5e5a">avg: ' + avg.toLocaleString() + ' / day</div>'
+      + '<div style="display:inline-block;margin-top:6px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;background:' + bg + ';color:' + txt + '">' + pctOfAvg + '% of avg</div>'
+      + '</div>';
+  }).join('');
+
+  var runningRows = currentlyRunning.length > 0
+    ? currentlyRunning.map(function(r) {
+        var lk = (r.line||'').replace(/\s/g,'').toLowerCase();
+        var bg  = lineBgMap[lk]  || '#2c2c2a';
+        var txt = lineTxtMap[lk] || '#e8e6e0';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:0.5px solid #2c2c2a;font-size:12px">'
+          + '<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:6px;white-space:nowrap;background:' + bg + ';color:' + txt + '">' + r.line + '</span>'
+          + '<span style="font-weight:500">' + r.product + '</span>'
+          + '<span style="color:#888780;margin-left:auto;white-space:nowrap">' + (r.projected ? r.projected.toLocaleString() + ' units projected' : '') + '</span>'
+          + '</div>';
+      }).join('')
+    : '<div style="font-size:12px;color:#5f5e5a;padding:6px 0">No lots currently in progress today</div>';
+
+  var todayOutlookHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">'
+    + '<div style="display:flex;align-items:center;gap:8px">'
+    + '<div style="width:8px;height:8px;border-radius:50%;background:#1D9E75"></div>'
+    + '<h3 style="margin:0;font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em">Today\'s outlook</h3>'
+    + '</div>'
+    + '<div style="font-size:11px;color:#5f5e5a">' + todayFmt + '</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:12px;margin-bottom:1rem">' + dialCards + '</div>'
+    + '<div style="border-top:0.5px solid #2c2c2a;padding-top:.75rem">'
+    + '<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">Currently running</div>'
+    + runningRows
+    + '</div>';
     '<div class="metric info"><div class="label">Units produced</div><div class="value">' + totalUnits.toLocaleString() + '</div><div class="sub">vs ' + totalProj.toLocaleString() + ' projected</div></div>'
     + '<div class="metric"><div class="label">Avg units / day</div><div class="value">' + avgUnitsPerDay.toLocaleString() + '</div><div class="sub">' + uniqueProductionDays + ' production days</div></div>'
     + '<div class="metric"><div class="label">Total lots</div><div class="value">' + totalLots.toLocaleString() + '</div><div class="sub">' + completeLots.length + ' complete \u00b7 ' + partialLots.length + ' partial</div></div>'
@@ -474,6 +570,7 @@ function renderExec() {
 
   document.getElementById('content').innerHTML =
     '<div class="metrics">' + metricsHTML + '</div>'
+    + '<div class="full-card" id="today-outlook-card">' + todayOutlookHTML + '</div>'
     + '<div class="full-card"><h3>Year-end projection vs target</h3>' + yearEndHTML + '</div>'
     + '<div class="charts-row">'
     + '<div class="chart-card">' + typeSplitHTML
@@ -504,6 +601,38 @@ function renderExec() {
     + '<div class="full-card"><h3>Top 10 customers by units produced</h3><div class="tbl-wrap"><table>'
     + '<thead><tr><th style="width:24px">#</th><th>Customer</th><th style="text-align:right">Units produced</th><th style="width:90px"></th><th style="text-align:right">Lots</th><th style="text-align:right">Avg run size</th><th style="text-align:right">% of production</th></tr></thead>'
     + '<tbody>' + custHTML + '</tbody></table></div></div>';
+
+  // draw dials after DOM is ready
+  lineOrder.forEach(function(line, i) {
+    var canvas = document.getElementById('dial_' + i);
+    if (!canvas) return;
+    var lk = line.replace(/\s/g,'').toLowerCase();
+    var color = lineColorMap[lk] || '#888780';
+    var todayUnits = todayByLine[line] || 0;
+    var avg = lineAvgPerDay[line] || 1;
+    var pct = Math.min(todayUnits / avg, 1.15);
+    var ctx = canvas.getContext('2d');
+    var cx = 60, cy = 65, r = 48;
+    ctx.clearRect(0, 0, 120, 70);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, Math.PI, 2 * Math.PI);
+    ctx.strokeStyle = '#2c2c2a';
+    ctx.lineWidth = 10;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    if (pct > 0) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, Math.PI, Math.PI + (Math.min(pct, 1) * Math.PI));
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 10;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#888780';
+    ctx.font = '500 11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.round(pct * 100) + '%', cx, cy - 16);
+  });
 
   document.getElementById('jar-legend').innerHTML =
     '<table style="width:100%;border-collapse:collapse;font-size:11px"><tbody>' + jarLegendHTML + '</tbody></table>';
