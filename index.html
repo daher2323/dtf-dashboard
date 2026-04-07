@@ -489,7 +489,16 @@ function animateGauges(gaugeData, todayTotal, totalGoal, allLinesHaveTarget, bar
       var pct=drawDial(canvas,animColor,animTrack,animFrac);
       var valEl=document.getElementById(g.valId); if(valEl){valEl.textContent=Math.round(g.units*e).toLocaleString();valEl.style.color=hitTarget?'#1D9E75':g.color;}
       var badgeEl=document.getElementById(g.badgeId); if(badgeEl){badgeEl.textContent=pct+(g.badgeSuffix||'% of avg');badgeEl.style.background=hitTarget?'#085041':g.origBg;badgeEl.style.color=hitTarget?'#9FE1CB':g.origTxt;}
-      var cardEl=document.getElementById(g.cardId); if(cardEl){cardEl.style.background=hitTarget?'#04342C':'#141618';cardEl.style.border=hitTarget?'1.5px solid #1D9E75':'0.5px solid #2c2c2a';}
+      var cardEl=document.getElementById(g.cardId);
+      if(cardEl){
+        if(hitTarget){
+          cardEl.style.background='#04342C';
+          cardEl.style.border='1.5px solid #1D9E75';
+        } else {
+          cardEl.style.background='#141618';
+          cardEl.style.border='0.5px solid #2c2c2a';
+        }
+      }
     });
 
     // banner progress
