@@ -563,7 +563,7 @@ function renderPerformance() {
   var weekAvg=cwData.length?Math.round(cwData.reduce(function(s,v){return s+v;},0)/cwData.length):0;
   var weekData26=weeks.map(function(w){return byWeek26[w];});
   var weekColors=weeks.map(function(w){return parseInt(w)===cwn?'rgba(55,138,221,0.35)':'#378ADD';});
-  var weekLabels=weeks.map(function(w){return parseInt(w)===cwn?'Wk '+w+' (now)':'Wk '+w;});
+  var weekLabels=weeks.map(function(w){return parseInt(w)===cwn?'Wk '+w+' (current)':'Wk '+w;});
 
   var byCust={};
   lots.forEach(function(l){var c=(l.product||'').split('-')[0].trim();if(!c)return;if(!byCust[c])byCust[c]={units:0,lots:0};byCust[c].units+=l.finalUnits;byCust[c].lots++;});
