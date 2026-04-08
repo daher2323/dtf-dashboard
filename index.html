@@ -507,6 +507,8 @@ function applyHitStates(gaugeData, todayTotal, totalGoal, statusLabel, statusCol
     var frac = g.avg ? (g.units/g.avg) : 0, hit = frac >= 1;
     var card = document.getElementById('gcard_'+g.idx);
     var check = document.getElementById('gcheck_'+g.idx);
+    var remain = document.getElementById('gremain_'+g.idx);
+    var remainTxt = document.getElementById('gremain_txt_'+g.idx);
     if(card) {
       if(hit) {
         card.style.border = '2.5px solid #1D9E75';
@@ -517,6 +519,18 @@ function applyHitStates(gaugeData, todayTotal, totalGoal, statusLabel, statusCol
       }
     }
     if(check) check.style.display = hit ? 'flex' : 'none';
+    if(remain && remainTxt) {
+      if(hit) {
+        remain.style.color = '#1D9E75';
+        remain.innerHTML = '<svg width="10" height="10" viewBox="0 0 11 11" fill="none" style="flex-shrink:0"><polyline points="1.5,5.5 4.5,8.5 9.5,2.5" stroke="#1D9E75" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Target reached</span>';
+      } else if(g.avg) {
+        var left = Math.max(0, Math.round(g.avg - g.units));
+        remain.style.color = '#EF9F27';
+        remain.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="none" stroke="#EF9F27" stroke-width="1.2"/><line x1="5" y1="2.8" x2="5" y2="5.5" stroke="#EF9F27" stroke-width="1.2" stroke-linecap="round"/><circle cx="5" cy="7.2" r="0.7" fill="#EF9F27"/></svg><span>'+left.toLocaleString()+' units remaining</span>';
+      } else {
+        remain.innerHTML = '';
+      }
+    }
   });
   var allHit = todayTotal >= totalGoal;
   var banner = document.getElementById('today-banner');
@@ -669,14 +683,18 @@ function renderToday() {
   var gaugesHTML=ALL_LINES.map(function(line,i){
     var k2=lk(line),color=LINE_COLOR[k2]||'#888780',bg=LINE_BG[k2]||'#2c2c2a',txt=LINE_TXT[k2]||'#e8e6e0',type=LINE_TYPE[k2]||'';
     var goal=lineGoal(line);
-    var goalLabel=goal.isTarget?'Target: '+goal.value.toLocaleString()+' units':'Avg: '+(lineAvg[line]||0).toLocaleString()+' units/day';
+    var pillColor=goal.isTarget?'background:#1a2a3a;border:0.5px solid #1D6FA8;color:#85B7EB':'background:#1a1f12;border:0.5px solid #3B5010;color:#C0DD97';
+    var pillDot=goal.isTarget?'background:#378ADD':'background:#639922';
+    var pillLabel=goal.isTarget?'Target: '+goal.value.toLocaleString()+' units':'Avg: '+(lineAvg[line]||0).toLocaleString()+' units/day';
+    var warningIcon='<svg width="10" height="10" viewBox="0 0 10 10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="none" stroke="#EF9F27" stroke-width="1.2"/><line x1="5" y1="2.8" x2="5" y2="5.5" stroke="#EF9F27" stroke-width="1.2" stroke-linecap="round"/><circle cx="5" cy="7.2" r="0.7" fill="#EF9F27"/></svg>';
     return '<div id="gcard_'+i+'" style="flex:1;background:#141618;border:0.5px solid #2c2c2a;border-radius:10px;padding:1rem;text-align:center;position:relative;transition:border .3s,box-shadow .3s;">'
       +'<div id="gcheck_'+i+'" style="position:absolute;top:8px;right:8px;display:none;width:20px;height:20px;border-radius:50%;background:#1D9E75;align-items:center;justify-content:center"><svg width="11" height="11" viewBox="0 0 11 11" fill="none"><polyline points="1.5,5.5 4.5,8.5 9.5,2.5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'
-      +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">'+line+(type?' \u2014 '+type:'')+'</div>'
+      +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">'+line+(type?' \u2014 '+type:'')+'</div>'
+      +'<div style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;margin-bottom:6px;'+pillColor+'"><span style="width:6px;height:6px;border-radius:50%;flex-shrink:0;'+pillDot+'"></span>'+pillLabel+'</div>'
       +'<canvas id="dial_'+i+'" width="140" height="82" style="display:block;margin:0 auto .25rem"></canvas>'
-      +'<div id="gval_'+i+'" style="font-size:20px;font-weight:500;color:'+color+';margin-bottom:2px">0</div>'
-      +'<div style="font-size:10px;color:'+(goal.isTarget?'#EF9F27':'#5f5e5a')+'">'+goalLabel+'</div>'
-      +'<div id="gbadge_'+i+'" style="display:inline-block;margin-top:6px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;background:'+bg+';color:'+txt+'">0% of '+(goal.isTarget?'Target':'Avg')+'</div>'
+      +'<div id="gval_'+i+'" style="font-size:20px;font-weight:500;color:'+color+';margin-bottom:4px">0</div>'
+      +'<div id="gbadge_'+i+'" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;background:'+bg+';color:'+txt+';margin-bottom:6px">0% of '+(goal.isTarget?'Target':'Avg')+'</div>'
+      +'<div id="gremain_'+i+'" style="display:flex;justify-content:center;align-items:center;gap:4px;font-size:11px;color:#EF9F27;font-weight:500;min-height:16px">'+warningIcon+'<span id="gremain_txt_'+i+'"></span></div>'
       +'</div>';
   }).join('');
 
