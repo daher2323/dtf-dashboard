@@ -3,14 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dynamic Technical Formulations - Operations View</title>
+<title>DTF - Production Hub</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, sans-serif; background: #141618; color: #e8e6e0; font-size: 14px; min-height: 100vh; }
   .shell { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
   .top-bar { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; position: sticky; top: 0; z-index: 100; background: #141618; padding: 1rem 1.5rem; margin: 0 -1.5rem 1.5rem; border-bottom: 0.5px solid #2c2c2a; }
-  .brand img { height: 54px; width: auto; background: #fff; border-radius: 8px; padding: 4px 8px; }
   .brand { display: flex; align-items: center; gap: 14px; }
   .brand-name { font-size: 20px; font-weight: 500; color: #e8e6e0; line-height: 1.2; }
   .brand-sub { font-size: 13px; color: #888780; margin-top: 3px; }
@@ -64,10 +63,10 @@
 <div id="login-screen" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#141618;">
   <div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:16px;padding:2.5rem 2rem;width:100%;max-width:360px;text-align:center">
     <div style="display:inline-block;position:relative;padding:10px 20px;margin-bottom:1.5rem;">
-      <div style="position:absolute;top:0;left:0;width:14px;height:14px;border-top:2px solid #378ADD;border-left:2px solid #378ADD;"></div>
-      <div style="position:absolute;top:0;right:0;width:14px;height:14px;border-top:2px solid #378ADD;border-right:2px solid #378ADD;"></div>
-      <div style="position:absolute;bottom:0;left:0;width:14px;height:14px;border-bottom:2px solid #378ADD;border-left:2px solid #378ADD;"></div>
-      <div style="position:absolute;bottom:0;right:0;width:14px;height:14px;border-bottom:2px solid #378ADD;border-right:2px solid #378ADD;"></div>
+      <div style="position:absolute;top:0;left:0;width:14px;height:14px;border-top:2px solid #444441;border-left:2px solid #444441;"></div>
+      <div style="position:absolute;top:0;right:0;width:14px;height:14px;border-top:2px solid #444441;border-right:2px solid #444441;"></div>
+      <div style="position:absolute;bottom:0;left:0;width:14px;height:14px;border-bottom:2px solid #444441;border-left:2px solid #444441;"></div>
+      <div style="position:absolute;bottom:0;right:0;width:14px;height:14px;border-bottom:2px solid #444441;border-right:2px solid #444441;"></div>
       <svg width="64" height="64" viewBox="0 0 54 54"><rect x="2" y="2" width="50" height="50" rx="10" fill="#0C447C" stroke="#378ADD" stroke-width="1.5"/><text x="27" y="35" text-anchor="middle" font-size="20" font-weight="700" fill="#85B7EB" font-family="system-ui,sans-serif" letter-spacing="-1">DTF</text></svg>
     </div>
     <div style="font-size:18px;font-weight:500;color:#e8e6e0;margin-bottom:4px">Dynamic Technical Formulations</div>
@@ -125,6 +124,7 @@ var sortCol = 'date', sortDir = -1, page = 1, PAGE_SIZE = 50;
 var charts = {}, todayTimer = null, refreshTimer = null;
 var productionDays = [], selectedDayIdx = -1;
 var selectedWeekMon = null;
+var lastRefreshTime = 0;
 
 function lk(s) { return (s||'').replace(/\s/g,'').toLowerCase(); }
 
@@ -239,46 +239,6 @@ function parseTargets(text) {
   } catch(e) { return {}; }
 }
 
-function buildProductionDays(preserveSelection) {
-  var now = new Date();
-  var todayStr = (now.getMonth()+1)+'/'+now.getDate()+'/'+now.getFullYear();
-  var seen = new Set();
-  allRows.forEach(function(r){
-    var d = (r['Date']||'').trim(); if (!d) return;
-    var dt = new Date(d); if (isNaN(dt)) return;
-    seen.add((dt.getMonth()+1)+'/'+dt.getDate()+'/'+dt.getFullYear());
-  });
-  var days = Array.from(seen).sort(function(a,b){ return new Date(a)-new Date(b); });
-  if (!seen.has(todayStr)) days.push(todayStr);
-  var currentlyViewingStr = productionDays[selectedDayIdx];
-  productionDays = days;
-  if (preserveSelection && currentlyViewingStr) {
-    var idx = days.indexOf(currentlyViewingStr);
-    selectedDayIdx = idx !== -1 ? idx : days.length - 1;
-  } else {
-    selectedDayIdx = days.length - 1;
-  }
-}
-
-function loadDashboard() {
-  fetchData().then(function(results) {
-    allRows   = parseCSV(results[0]).filter(isValid);
-    allRows25 = parseCSV(results[1]).filter(isValid);
-    dailyTargets = parseTargets(results[2]);
-    lotMap = buildLotMap(allRows);
-    buildProductionDays(false); // first load always lands on today
-    lastRefreshTime = Date.now();
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('content').style.display = 'block';
-    render();
-    startRefreshTimers();
-  }).catch(function(e){
-    var el = document.getElementById('loading');
-    el.textContent = 'Failed to load data: '+e.message;
-    setTimeout(loadDashboard, 8000);
-  });
-}
-
 function fetchWithRetry(url, retries, delay) {
   retries = retries || 3; delay = delay || 1500;
   return fetch(url).then(function(r){
@@ -306,11 +266,49 @@ function applyFreshData(res) {
   if (newRows.length < 3) { console.warn('Refresh aborted: suspiciously few rows returned'); return false; }
   var newLotMap  = buildLotMap(newRows);
   allRows = newRows; allRows25 = newRows25; dailyTargets = newTargets; lotMap = newLotMap;
-  buildProductionDays(true); // preserve selected day on background refreshes
+  buildProductionDays(true);
   return true;
 }
 
-var lastRefreshTime = 0;
+function buildProductionDays(preserveSelection) {
+  var now = new Date();
+  var todayStr = (now.getMonth()+1)+'/'+now.getDate()+'/'+now.getFullYear();
+  var seen = new Set();
+  allRows.forEach(function(r){
+    var d = (r['Date']||'').trim(); if (!d) return;
+    var dt = new Date(d); if (isNaN(dt)) return;
+    seen.add((dt.getMonth()+1)+'/'+dt.getDate()+'/'+dt.getFullYear());
+  });
+  var days = Array.from(seen).sort(function(a,b){ return new Date(a)-new Date(b); });
+  if (!seen.has(todayStr)) days.push(todayStr);
+  var currentlyViewingStr = productionDays[selectedDayIdx];
+  productionDays = days;
+  if (preserveSelection && currentlyViewingStr) {
+    var idx = days.indexOf(currentlyViewingStr);
+    selectedDayIdx = idx !== -1 ? idx : days.length - 1;
+  } else {
+    selectedDayIdx = days.length - 1;
+  }
+}
+
+function loadDashboard() {
+  fetchData().then(function(results) {
+    allRows   = parseCSV(results[0]).filter(isValid);
+    allRows25 = parseCSV(results[1]).filter(isValid);
+    dailyTargets = parseTargets(results[2]);
+    lotMap = buildLotMap(allRows);
+    buildProductionDays(false);
+    lastRefreshTime = Date.now();
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+    render();
+    startRefreshTimers();
+  }).catch(function(e){
+    var el = document.getElementById('loading');
+    el.textContent = 'Failed to load data: '+e.message;
+    setTimeout(loadDashboard, 8000);
+  });
+}
 
 function isViewingLive() {
   return selectedDayIdx === productionDays.length - 1;
@@ -321,9 +319,10 @@ function refreshAndRender(forceRender) {
     if(applyFreshData(res)){
       lastRefreshTime = Date.now();
       var onToday = topView==='summary' && subView==='today';
-      if(onToday && !isViewingLive()) return; // browsing history — refresh data silently, don't re-render
-      if(forceRender || onToday) render();
-      else if(topView==='summary'&&subView==='performance') render();
+      var onWeekly = topView==='summary' && subView==='weekly';
+      if(onToday && !isViewingLive()) return;
+      if(forceRender || onToday || onWeekly) render();
+      else if(topView==='summary' && subView==='performance') render();
       else if(topView==='detail') render();
     }
   }).catch(function(e){ console.error('Refresh failed:', e); });
@@ -332,15 +331,12 @@ function refreshAndRender(forceRender) {
 function startRefreshTimers() {
   if (refreshTimer) clearInterval(refreshTimer);
   if (todayTimer) clearInterval(todayTimer);
-
   refreshTimer = setInterval(function(){
     if(topView==='summary'&&subView==='performance'||topView==='detail') refreshAndRender(false);
   }, 5*60*1000);
-
   todayTimer = setInterval(function(){
     if(topView==='summary'&&subView==='today') refreshAndRender(false);
   }, 60*1000);
-
   document.addEventListener('visibilitychange', function(){
     if(document.visibilityState === 'visible'){
       var staleness = Date.now() - lastRefreshTime;
@@ -472,18 +468,14 @@ function openWeekPicker() {
   if (existing) { closeWeekPicker(); return; }
   var curMon = selectedWeekMon || getCurrentWeekMon();
   var liveMonStr = getCurrentWeekMon().toDateString();
-
-  // find earliest week with data
   var earliest = new Date();
-  allRows.forEach(function(r){
+  allRows.concat(allRows25).forEach(function(r){
     var dt = new Date(r['Date']); if(isNaN(dt)) return;
     if(dt < earliest) earliest = dt;
   });
   var eMon = new Date(earliest); eMon.setHours(0,0,0,0);
   var eDay = eMon.getDay();
   eMon.setDate(eMon.getDate()-(eDay===0?6:eDay-1));
-
-  // build months
   var liveMon = getCurrentWeekMon();
   var byMonth = {};
   var d = new Date(eMon);
@@ -494,10 +486,9 @@ function openWeekPicker() {
     byMonth[k].weeks.push({mon: new Date(d), fri: fri});
     d.setDate(d.getDate()+7);
   }
-
   var monthsHTML = Object.keys(byMonth).sort().reverse().map(function(k){
     var mo = byMonth[k];
-    var weeksHTML = mo.weeks.reverse().map(function(w){
+    var weeksHTML = mo.weeks.slice().reverse().map(function(w){
       var isSelected = curMon.toDateString()===w.mon.toDateString();
       var isLive = liveMonStr===w.mon.toDateString();
       var monFmt = w.mon.toLocaleDateString('en-US',{month:'short',day:'numeric'});
@@ -505,14 +496,13 @@ function openWeekPicker() {
       var wn = getWeekNum(w.mon);
       var bg = isSelected?'#1D9E75':isLive?'#0C447C':'transparent';
       var color = isSelected?'#fff':isLive?'#85B7EB':'#e8e6e0';
-      return '<div onclick="pickWeek(\''+w.mon.toDateString()+'\')" style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:6px;cursor:pointer;background:'+bg+';color:'+color+';margin-bottom:2px;" onmouseover="if(!this.style.background||this.style.background===\'transparent\')this.style.background=\'#252829\'" onmouseout="this.style.background=\''+bg+'\'">'
+      return '<div onclick="pickWeek(\''+w.mon.toDateString()+'\')" style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:6px;cursor:pointer;background:'+bg+';color:'+color+';margin-bottom:2px;">'
         +'<span style="font-size:11px;font-weight:'+(isSelected||isLive?'500':'400')+'">Wk '+wn+'</span>'
-        +'<span style="font-size:11px;opacity:0.7">'+monFmt+' – '+friFmt+'</span>'
+        +'<span style="font-size:11px;opacity:0.7">'+monFmt+' \u2013 '+friFmt+'</span>'
         +'</div>';
     }).join('');
     return '<div style="margin-bottom:1rem"><div style="font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">'+mo.label+'</div>'+weeksHTML+'</div>';
   }).join('');
-
   var picker = document.createElement('div');
   picker.id = 'week-picker';
   picker.style.cssText = 'position:absolute;z-index:1000;background:#1e2124;border:0.5px solid #444441;border-radius:12px;padding:1rem;max-height:400px;overflow-y:auto;min-width:260px;right:0;top:44px;';
@@ -537,10 +527,7 @@ function render() {
     else if (subView==='weekly') renderWeekly();
     else renderPerformance();
   } catch(e) {
-    // store weekLots on window so the filter can access it
-  window._weekLots = weekLots;
-
-  document.getElementById('content').innerHTML='<div style="padding:2rem;color:#F09595;font-size:12px;font-family:monospace">Error: '+e.message+'<br><br>'+(e.stack||'').split('\n').slice(0,5).join('<br>')+'</div>';
+    document.getElementById('content').innerHTML='<div style="padding:2rem;color:#F09595;font-size:12px;font-family:monospace">Error: '+e.message+'<br><br>'+(e.stack||'').split('\n').slice(0,5).join('<br>')+'</div>';
   }
 }
 
@@ -584,7 +571,7 @@ function prepData() {
   var lineEntries=Object.entries(byLine).sort(function(a,b){return parseInt(a[0].replace(/\D/g,''))-parseInt(b[0].replace(/\D/g,''));});
   var lineAvg={};
   lineEntries.forEach(function(e){lineAvg[e[0]]=uniqDays?Math.round(e[1].units/uniqDays):0;});
-  return {now,lots,completeLots,partialLots,totalUnits,totalProj,uniqueProds,uniqueCusts,totalLots,devs,avgDev,highDevCount,uniqDays,avgPerDay,total25,total25lots,comp25pct,avg25perDay,avgDev25,custs25,lineEntries,lineAvg,comp25};
+  return {now:now,lots:lots,completeLots:completeLots,partialLots:partialLots,totalUnits:totalUnits,totalProj:totalProj,uniqueProds:uniqueProds,uniqueCusts:uniqueCusts,totalLots:totalLots,devs:devs,avgDev:avgDev,highDevCount:highDevCount,uniqDays:uniqDays,avgPerDay:avgPerDay,total25:total25,total25lots:total25lots,comp25pct:comp25pct,avg25perDay:avg25perDay,avgDev25:avgDev25,custs25:custs25,lineEntries:lineEntries,lineAvg:lineAvg,comp25:comp25};
 }
 
 function animateGauges(gaugeData, todayTotal, totalGoal, barColor) {
@@ -608,7 +595,7 @@ function animateGauges(gaugeData, todayTotal, totalGoal, barColor) {
       var frac=g.avg?(g.units/g.avg):0, hit=frac>=1;
       var p=drawDial(g.idx, hit?'#1D9E75':g.color, hit?'#085041':g.track, Math.min(frac*e,1));
       var ve=document.getElementById('gval_'+g.idx); if(ve){ve.textContent=Math.round(g.units*e).toLocaleString();ve.style.color=hit?'#1D9E75':g.color;}
-      var be=document.getElementById('gbadge_'+g.idx); if(be){be.textContent=p+(g.sfx||'% of avg');if(hit){be.style.background='#085041';be.style.color='#9FE1CB';}}
+      var be=document.getElementById('gbadge_'+g.idx); if(be){be.textContent=p+(g.sfx||'% of Avg');if(hit){be.style.background='#085041';be.style.color='#9FE1CB';}}
     });
     var tp=totalGoal?Math.round((todayTotal*e)/totalGoal*100):0;
     var pp=document.getElementById('banner-pct'); if(pp) pp.textContent=tp+'%';
@@ -619,7 +606,7 @@ function animateGauges(gaugeData, todayTotal, totalGoal, barColor) {
         var frac=g.avg?(g.units/g.avg):0, hit=frac>=1;
         drawDial(g.idx, hit?'#1D9E75':g.color, hit?'#085041':g.track, frac);
         var ve=document.getElementById('gval_'+g.idx); if(ve) ve.textContent=g.units.toLocaleString();
-        var be=document.getElementById('gbadge_'+g.idx); if(be) be.textContent=Math.round(frac*100)+(g.sfx||'% of avg');
+        var be=document.getElementById('gbadge_'+g.idx); if(be) be.textContent=Math.round(frac*100)+(g.sfx||'% of Avg');
       });
       return;
     }
@@ -634,7 +621,6 @@ function applyHitStates(gaugeData, todayTotal, totalGoal, statusLabel, statusCol
     var card = document.getElementById('gcard_'+g.idx);
     var check = document.getElementById('gcheck_'+g.idx);
     var remain = document.getElementById('gremain_'+g.idx);
-    var remainTxt = document.getElementById('gremain_txt_'+g.idx);
     if(card) {
       if(hit) {
         card.style.border = '2.5px solid #1D9E75';
@@ -645,7 +631,7 @@ function applyHitStates(gaugeData, todayTotal, totalGoal, statusLabel, statusCol
       }
     }
     if(check) check.style.display = hit ? 'flex' : 'none';
-    if(remain && remainTxt) {
+    if(remain) {
       if(hit) {
         remain.style.color = '#1D9E75';
         remain.innerHTML = '<svg width="10" height="10" viewBox="0 0 11 11" fill="none" style="flex-shrink:0"><polyline points="1.5,5.5 4.5,8.5 9.5,2.5" stroke="#1D9E75" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Target reached</span>';
@@ -706,7 +692,6 @@ function renderToday() {
   var completedToday=[];
   var seenLots=new Set();
 
-  // build per-day units for each lot
   var todayUnitsByLot={};
   allRows.forEach(function(r){
     if(!matchDate(r['Date'])) return;
@@ -714,12 +699,11 @@ function renderToday() {
     todayUnitsByLot[lot]=(todayUnitsByLot[lot]||0)+num(r['Final Units']);
   });
 
-  // build running total up to and including viewDate for each lot
-  var viewDateObj2=new Date(viewStr);
+  var viewDateObj=new Date(viewStr);
   var runningTotalByLot={};
   allRows.forEach(function(r){
     var dt=new Date(r['Date']); if(isNaN(dt)) return;
-    if(dt>viewDateObj2) return;
+    if(dt>viewDateObj) return;
     var lot=(r['Lot Number']||'').trim(); if(!lot) return;
     runningTotalByLot[lot]=(runningTotalByLot[lot]||0)+num(r['Final Units']);
   });
@@ -732,7 +716,6 @@ function renderToday() {
     var projected=lotData?lotData.projected:num(r['Projected Units']);
     var line=(r['Line']||'').trim();
     var startTime=(r['Start Time']||'').trim();
-    // use this day's row status directly — not the aggregated lot status
     var todayStatus=(r['Complete or Partial']||'').trim();
     var todayUnits=todayUnitsByLot[lot]||0;
     var runningTotal=runningTotalByLot[lot]||0;
@@ -759,14 +742,12 @@ function renderToday() {
 
   var totalGoal = ALL_LINES.reduce(function(s,line){ return s+lineGoal(line).value; }, 0);
   var allLinesHaveTarget = ALL_LINES.every(function(line){ return !!(dayTargetRow[line]); });
-  var bannerGoalLabel = allLinesHaveTarget ? '% of target' : '% of avg';
+  var bannerGoalLabel = allLinesHaveTarget ? '% of Target' : '% of Avg';
   var todayPct = totalGoal ? Math.round((todayTotal/totalGoal)*100) : 0;
-  var barW = Math.min(todayPct, 100);
   var statusLabel = isLive&&!dayComplete ? 'Day in progress' : (todayPct>=100?'Target exceeded':'Day complete');
   var statusColor = isLive&&!dayComplete ? '#888780' : (todayPct>=100?'#1D9E75':'#EF9F27');
   var barColor = isLive&&!dayComplete ? '#5f5e5a' : (todayPct>=100?'#1D9E75':'#EF9F27');
 
-  var viewDateObj=new Date(viewStr);
   var ytdRows=allRows.filter(function(r){ var dt=new Date(r['Date']); return !isNaN(dt)&&dt<=viewDateObj; });
   var ytdLotMap=buildLotMap(ytdRows);
   var ytdLots=Object.values(ytdLotMap).filter(Boolean);
@@ -800,7 +781,7 @@ function renderToday() {
     +'<div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:22px;font-weight:500;color:'+(onTrackBanner?'#1D9E75':'#EF9F27')+'">'+yearProjBanner.toLocaleString()+'</span>'
     +'<span style="font-size:11px;color:#5f5e5a">target: 3,927,000</span></div></div>'
     +'<div style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0"></div>'
-    +'<div style="flex:1;min-width:80px"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">vs target</div>'
+    +'<div style="flex:1;min-width:80px"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Vs target</div>'
     +'<div style="font-size:22px;font-weight:500;color:'+(onTrackBanner?'#1D9E75':'#EF9F27')+'">'+(onTrackBanner?'+':'')+targetPctBanner+'%</div></div>'
     +'<div style="width:0.5px;background:#2c2c2a;height:36px;flex-shrink:0"></div>'
     +'<div style="flex:2;min-width:160px">'
@@ -817,7 +798,7 @@ function renderToday() {
     '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0" id="date-nav-anchor">'
     +'<button onclick="navDay(-1)" '+(prevDisabled?'disabled':'')+' style="width:28px;height:28px;flex-shrink:0;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:'+(prevDisabled?'default':'pointer')+';color:'+(prevDisabled?'#444441':'#e8e6e0')+';font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8249;</button>'
     +'<div onclick="openPicker()" style="text-align:center;width:260px;flex-shrink:0;cursor:pointer;padding:4px 12px;border-radius:8px;border:0.5px solid #444441;background:transparent;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'transparent\'">'
-    +'<div style="font-size:13px;font-weight:500;color:#e8e6e0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+viewFmt+' &#x25BE;</div>'
+    +'<div style="font-size:13px;font-weight:500;color:#e8e6e0;white-space:nowrap;">'+viewFmt+' &#x25BE;</div>'
     +'<div style="font-size:10px;color:#5f5e5a;margin-top:2px;height:14px">'+dayLabel+'</div>'
     +'</div>'
     +'<button onclick="navDay(1)" '+(nextDisabled?'disabled':'')+' style="width:28px;height:28px;flex-shrink:0;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:'+(nextDisabled?'default':'pointer')+';color:'+(nextDisabled?'#444441':'#e8e6e0')+';font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8250;</button>'
@@ -833,14 +814,14 @@ function renderToday() {
     var lineClr=LINE_COLOR[k2]||'#378ADD';
     var lineBg=LINE_BG[k2]||'#0C447C';
     var lineTxt=LINE_TXT[k2]||'#85B7EB';
-    var pillColor=goal.isTarget?'background:'+lineBg+';border:0.5px solid '+lineClr+';color:'+lineTxt:'background:#1a1f12;border:0.5px solid #3B5010;color:#C0DD97';
-    var pillDot=goal.isTarget?'background:'+lineClr:'background:#639922';
+    var pillStyle=goal.isTarget?'background:'+lineBg+';border:0.5px solid '+lineClr+';color:'+lineTxt:'background:#1a1f12;border:0.5px solid #3B5010;color:#C0DD97';
+    var pillDotStyle=goal.isTarget?'background:'+lineClr:'background:#639922';
     var pillLabel=goal.isTarget?'Target: '+goal.value.toLocaleString()+' units':'Avg: '+(lineAvg[line]||0).toLocaleString()+' units/day';
     var warningIcon='<svg width="10" height="10" viewBox="0 0 10 10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="none" stroke="#EF9F27" stroke-width="1.2"/><line x1="5" y1="2.8" x2="5" y2="5.5" stroke="#EF9F27" stroke-width="1.2" stroke-linecap="round"/><circle cx="5" cy="7.2" r="0.7" fill="#EF9F27"/></svg>';
     return '<div id="gcard_'+i+'" style="flex:1;background:#141618;border:0.5px solid #2c2c2a;border-radius:10px;padding:1rem;text-align:center;position:relative;transition:border .3s,box-shadow .3s;">'
       +'<div id="gcheck_'+i+'" style="position:absolute;top:8px;right:8px;display:none;width:20px;height:20px;border-radius:50%;background:#1D9E75;align-items:center;justify-content:center"><svg width="11" height="11" viewBox="0 0 11 11" fill="none"><polyline points="1.5,5.5 4.5,8.5 9.5,2.5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>'
       +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">'+line+(type?' \u2014 '+type:'')+'</div>'
-      +'<div style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;margin-bottom:6px;'+pillColor+'"><span style="width:6px;height:6px;border-radius:50%;flex-shrink:0;'+pillDot+'"></span>'+pillLabel+'</div>'
+      +'<div style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;margin-bottom:6px;'+pillStyle+'"><span style="width:6px;height:6px;border-radius:50%;flex-shrink:0;'+pillDotStyle+'"></span>'+pillLabel+'</div>'
       +'<canvas id="dial_'+i+'" width="140" height="82" style="display:block;margin:0 auto .25rem"></canvas>'
       +'<div id="gval_'+i+'" style="font-size:20px;font-weight:500;color:'+color+';margin-bottom:4px">0</div>'
       +'<div id="gbadge_'+i+'" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500;background:'+bg+';color:'+txt+';margin-bottom:6px">0% of '+(goal.isTarget?'Target':'Avg')+'</div>'
@@ -906,19 +887,19 @@ function renderToday() {
                     var parts=(l.product||'').split('-');
                     var brand=parts[0].trim();
                     var product=parts.slice(1).join('-').trim()||brand;
-                    var dev=l.projected?((l.finalUnits-l.projected)/l.projected*100):null;
-                    var devS=dev!==null?(dev>0?'+':'')+dev.toFixed(1)+'%':'—';
-                    var devBg=dev===null?'#2c2c2a':Math.abs(dev)<=2?'#2c2c2a':dev<0?'#791F1F':'#0F6E56';
-                    var devTxt=dev===null?'#888780':Math.abs(dev)<=2?'#888780':dev<0?'#F09595':'#9FE1CB';
                     var isPartial=l.status.toLowerCase().includes('partial');
                     var statusBg=isPartial?'#633806':'#0F6E56';
                     var statusTxt=isPartial?'#FAC775':'#9FE1CB';
                     var runPct=l.projected?Math.min(Math.round((l.finalUnits/l.projected)*100),100):0;
+                    var dev=(!isPartial&&l.projected)?((l.finalUnits-l.projected)/l.projected*100):null;
+                    var devS=dev!==null?(dev>0?'+':'')+dev.toFixed(1)+'%':'—';
+                    var devBg=dev===null?'#2c2c2a':Math.abs(dev)<=2?'#2c2c2a':dev<0?'#791F1F':'#0F6E56';
+                    var devTxt=dev===null?'#888780':Math.abs(dev)<=2?'#888780':dev<0?'#F09595':'#9FE1CB';
                     if(isPartial){
                       return '<div style="padding:8px 10px;border-bottom:0.5px solid #2c2c2a;">'
                         +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">'
                         +'<div style="font-size:11px;font-weight:500;color:#e8e6e0;">'+brand+'</div>'
-                        +'<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:10px;background:'+statusBg+';color:'+statusTxt+'">Partial</span>'
+                        +'<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:10px;background:'+statusBg+';color:'+statusTxt+';">Partial</span>'
                         +'</div>'
                         +'<div style="font-size:11px;color:#888780;margin-bottom:6px;">'+product+'</div>'
                         +'<div style="display:flex;align-items:center;justify-content:space-between;">'
@@ -959,7 +940,7 @@ function renderToday() {
     var k2=lk(line), goal=lineGoal(line);
     return {idx:i, color:LINE_COLOR[k2]||'#888780', track:LINE_TRACK[k2]||'#2c2c2a',
       units:todayByLine[line]||0, avg:goal.value,
-      sfx: goal.isTarget?'% of target':'% of avg'};
+      sfx: goal.isTarget?'% of Target':'% of Avg'};
   });
 
   setTimeout(function(){
@@ -969,7 +950,7 @@ function renderToday() {
 }
 
 function getWeekDates(now) {
-  var day = now.getDay(); // 0=Sun
+  var day = now.getDay();
   var mon = new Date(now); mon.setHours(0,0,0,0); mon.setDate(now.getDate()-(day===0?6:day-1));
   var fri = new Date(mon); fri.setDate(mon.getDate()+4);
   var dates = [];
@@ -993,52 +974,53 @@ function buildWeekLotsGrid(lots) {
     lotsByLine[line].push(l);
   });
   return ALL_LINES.map(function(line){
-    var k2=lk(line),bg=LINE_BG[k2]||'#2c2c2a',txt=LINE_TXT[k2]||'#e8e6e0',type=LINE_TYPE[k2]||'';
-    var lineLots=lotsByLine[line]||[];
-    var rows=lineLots.length===0
-      ?'<div style="padding:10px;font-size:11px;color:#5f5e5a;font-style:italic;">No lots this week</div>'
-      :lineLots.map(function(l){
-        var parts=(l.product||'').split('-');
-        var brand=parts[0].trim(), product=parts.slice(1).join('-').trim()||brand;
-        var isPartial=l.status.toLowerCase().includes('partial');
-        var sBg=isPartial?'#633806':'#0F6E56', sTxt=isPartial?'#FAC775':'#9FE1CB';
-        var dev=(!isPartial&&l.projected)?((l.finalUnits-l.projected)/l.projected*100):null;
-        var devS=dev!==null?(dev>0?'+':'')+dev.toFixed(1)+'%':'';
-        var devBg=dev===null?'':Math.abs(dev)<=2?'#2c2c2a':dev<0?'#791F1F':'#0F6E56';
-        var devTxt=dev===null?'':Math.abs(dev)<=2?'#888780':dev<0?'#F09595':'#9FE1CB';
-        var runPct=l.projected?Math.min(Math.round((l.finalUnits/l.projected)*100),100):0;
-        return '<div style="padding:8px 10px;border-bottom:0.5px solid #2c2c2a;">'
-          +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">'
-          +'<div style="font-size:11px;font-weight:500;color:#e8e6e0;">'+brand+'</div>'
-          +'<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:10px;background:'+sBg+';color:'+sTxt+';">'+(isPartial?'Partial':'Complete')+'</span>'
-          +'</div>'
-          +'<div style="font-size:11px;color:#888780;margin-bottom:5px;">'+product+'</div>'
-          +'<div style="display:flex;align-items:center;justify-content:space-between;">'
-          +'<span style="font-size:11px;color:#888780;">'+l.finalUnits.toLocaleString()+' <span style="color:#5f5e5a;">/ '+(l.projected?l.projected.toLocaleString():'—')+' proj</span></span>'
-          +(isPartial
-            ?'<div style="height:3px;background:#2c2c2a;border-radius:2px;width:60px;"><div style="height:100%;width:'+runPct+'%;background:#EF9F27;border-radius:2px;"></div></div>'
-            :(devS?'<span style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:6px;background:'+devBg+';color:'+devTxt+';">'+devS+'</span>':'')
-          )
-          +'</div></div>';
-      }).join('');
+    var k2=lk(line), bg=LINE_BG[k2]||'#2c2c2a', txt=LINE_TXT[k2]||'#e8e6e0', type=LINE_TYPE[k2]||'';
+    var lineLots = lotsByLine[line] || [];
+    var rows = lineLots.length === 0
+      ? '<div style="padding:10px;font-size:11px;color:#5f5e5a;font-style:italic;">No lots this week</div>'
+      : lineLots.map(function(l){
+          var parts = (l.product||'').split('-');
+          var brand = parts[0].trim();
+          var product = parts.slice(1).join('-').trim() || brand;
+          var isPartial = l.status.toLowerCase().includes('partial');
+          var sBg = isPartial ? '#633806' : '#0F6E56';
+          var sTxt = isPartial ? '#FAC775' : '#9FE1CB';
+          var dev = (!isPartial && l.projected) ? ((l.finalUnits - l.projected) / l.projected * 100) : null;
+          var devS = dev !== null ? (dev > 0 ? '+' : '') + dev.toFixed(1) + '%' : '';
+          var devBg = dev === null ? '' : Math.abs(dev) <= 2 ? '#2c2c2a' : dev < 0 ? '#791F1F' : '#0F6E56';
+          var devTxt = dev === null ? '' : Math.abs(dev) <= 2 ? '#888780' : dev < 0 ? '#F09595' : '#9FE1CB';
+          var runPct = l.projected ? Math.min(Math.round((l.finalUnits / l.projected) * 100), 100) : 0;
+          return '<div style="padding:8px 10px;border-bottom:0.5px solid #2c2c2a;">'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">'
+            + '<div style="font-size:11px;font-weight:500;color:#e8e6e0;">' + brand + '</div>'
+            + '<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:10px;background:' + sBg + ';color:' + sTxt + ';">' + (isPartial ? 'Partial' : 'Complete') + '</span>'
+            + '</div>'
+            + '<div style="font-size:11px;color:#888780;margin-bottom:5px;">' + product + '</div>'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;">'
+            + '<span style="font-size:11px;color:#888780;">' + l.finalUnits.toLocaleString() + ' <span style="color:#5f5e5a;">/ ' + (l.projected ? l.projected.toLocaleString() : '\u2014') + ' proj</span></span>'
+            + (isPartial
+                ? '<div style="height:3px;background:#2c2c2a;border-radius:2px;width:60px;"><div style="height:100%;width:' + runPct + '%;background:#EF9F27;border-radius:2px;"></div></div>'
+                : (devS ? '<span style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:6px;background:' + devBg + ';color:' + devTxt + ';">' + devS + '</span>' : ''))
+            + '</div></div>';
+        }).join('');
     return '<div style="background:#141618;border:0.5px solid #2c2c2a;border-radius:10px;overflow:hidden;">'
-      +'<div style="padding:8px 10px;border-bottom:0.5px solid #2c2c2a;display:flex;align-items:center;gap:6px;">'
-      +'<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:6px;background:'+bg+';color:'+txt+';">'+line+'</span>'
-      +'<span style="font-size:10px;color:#888780;">'+type+'</span>'
-      +'</div>'+rows+'</div>';
+      + '<div style="padding:8px 10px;border-bottom:0.5px solid #2c2c2a;display:flex;align-items:center;gap:6px;">'
+      + '<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:6px;background:' + bg + ';color:' + txt + ';">' + line + '</span>'
+      + '<span style="font-size:10px;color:#888780;">' + type + '</span>'
+      + '</div>' + rows + '</div>';
   }).join('');
 }
 
 function filterWeekLots() {
   var sel = document.getElementById('weekCustFilter');
   var cust = sel ? sel.value : '';
-  var filtered = cust ? (window._weekLots||[]).filter(function(l){
-    return (l.product||'').split('-')[0].trim() === cust;
-  }) : (window._weekLots||[]);
+  var filtered = cust
+    ? (window._weekLots || []).filter(function(l){ return (l.product||'').split('-')[0].trim() === cust; })
+    : (window._weekLots || []);
   var grid = document.getElementById('weekLotsGrid');
   var count = document.getElementById('weekLotCount');
   if(grid) grid.innerHTML = buildWeekLotsGrid(filtered);
-  if(count) count.textContent = filtered.length+' lot'+(filtered.length!==1?'s':'');
+  if(count) count.textContent = filtered.length + ' lot' + (filtered.length !== 1 ? 's' : '');
 }
 
 function renderWeekly() {
@@ -1047,298 +1029,246 @@ function renderWeekly() {
   var liveMon = getCurrentWeekMon();
   var isLiveWeek = selectedWeekMon.toDateString() === liveMon.toDateString();
 
-  // combine both years up front
   var allRowsCombined = allRows.concat(allRows25);
 
-  // for historical weeks, use end of that Friday as the cutoff
   var wkMon = selectedWeekMon;
   var wkFri = new Date(wkMon); wkFri.setDate(wkMon.getDate()+4); wkFri.setHours(23,59,59,999);
   var wkEnd = isLiveWeek ? now : wkFri;
-  var wk = getWeekDates(isLiveWeek ? now : new Date(wkMon.getTime()+3*86400000));
-  wk.mon = wkMon;
-  wk.fri = new Date(wkMon); wk.fri.setDate(wkMon.getDate()+4);
-  wk.dates = [];
-  for(var i=0;i<5;i++){ var dd=new Date(wkMon); dd.setDate(wkMon.getDate()+i); wk.dates.push(dd); }
+
+  var wkDates = [];
+  for(var i=0;i<5;i++){ var dd=new Date(wkMon); dd.setDate(wkMon.getDate()+i); wkDates.push(dd); }
 
   var weekNum = getWeekNum(wkMon);
-
   var lastMon = new Date(wkMon); lastMon.setDate(wkMon.getDate()-7);
   var lastFri = new Date(lastMon); lastFri.setDate(lastMon.getDate()+4); lastFri.setHours(23,59,59,999);
 
-  // weekly units from allRows
-  var weekRows = allRows.filter(function(r){
-    var dt=new Date(r['Date']); if(isNaN(dt)) return false;
-    return dt>=wk.mon && dt<=wkEnd;
+  var weekRows = allRowsCombined.filter(function(r){
+    var dt = new Date(r['Date']); if(isNaN(dt)) return false;
+    return dt >= wkMon && dt <= wkEnd;
   });
-  var weekUnits = weekRows.reduce(function(s,r){return s+num(r['Final Units']);},0);
 
-  // per-line weekly units
-  var weekByLine={};
+  var weekUnits = weekRows.reduce(function(s,r){ return s + num(r['Final Units']); }, 0);
+
+  var weekByLine = {};
   weekRows.forEach(function(r){
-    var line=(r['Line']||'').trim(); if(!line) return;
-    weekByLine[line]=(weekByLine[line]||0)+num(r['Final Units']);
+    var line = (r['Line']||'').trim(); if(!line) return;
+    weekByLine[line] = (weekByLine[line]||0) + num(r['Final Units']);
   });
 
-  // weekly target: sum daily targets for M-F, fallback to avg for missing days
-  var daysWithTarget=0, daysWithoutTarget=0, targetSum=0;
-  wk.dates.forEach(function(d){
-    var k=dateKey(d);
-    var row=dailyTargets[k]||{};
-    var dayTotal=ALL_LINES.reduce(function(s,line){return s+(row[line]||0);},0);
-    if(dayTotal>0){ targetSum+=dayTotal; daysWithTarget++; }
+  var lastWeekRows = allRowsCombined.filter(function(r){
+    var dt = new Date(r['Date']); return !isNaN(dt) && dt >= lastMon && dt <= lastFri;
+  });
+  var lastWeekUnits = lastWeekRows.reduce(function(s,r){ return s + num(r['Final Units']); }, 0);
+
+  var daysWithTarget = 0, daysWithoutTarget = 0, targetSum = 0;
+  wkDates.forEach(function(d){
+    var k = dateKey(d);
+    var row = dailyTargets[k] || {};
+    var dayTotal = ALL_LINES.reduce(function(s,line){ return s + (row[line]||0); }, 0);
+    if(dayTotal > 0){ targetSum += dayTotal; daysWithTarget++; }
     else daysWithoutTarget++;
   });
-  var avgDailyFallback = daysWithTarget>0 ? Math.round(targetSum/daysWithTarget) : WEEKLY_TARGET/5;
+  var avgDailyFallback = daysWithTarget > 0 ? Math.round(targetSum / daysWithTarget) : WEEKLY_TARGET / 5;
   var weeklyTarget = targetSum + (daysWithoutTarget * avgDailyFallback);
-  var targetIsEstimated = daysWithoutTarget > 0;
+  var targetIsEstimated = daysWithoutTarget > 0 && daysWithTarget > 0;
   var targetIsFullySet = daysWithoutTarget === 0;
 
-  // days elapsed
-  var daysElapsed, daysRemaining;
-  if(isLiveWeek){
-    var day=now.getDay();
-    daysElapsed = day===0?5:day===6?5:day;
-  } else {
-    daysElapsed = 5;
-  }
-  daysRemaining = Math.max(0, 5-daysElapsed);
+  var day = now.getDay();
+  var daysElapsed = isLiveWeek ? (day===0?5:day===6?5:day) : 5;
 
-  // pace projection
-  var dailyRate = daysElapsed ? weekUnits/daysElapsed : 0;
+  var dailyRate = daysElapsed ? weekUnits / daysElapsed : 0;
   var weekProj = Math.round(dailyRate * 5);
   var onPace = weekProj >= weeklyTarget;
+  var vsTarget = weekProj - weeklyTarget;
+  var vsTargetPct = weeklyTarget ? Math.round((vsTarget / weeklyTarget) * 100) : 0;
+  var vsLastWk = lastWeekUnits ? ((weekUnits - lastWeekUnits) / lastWeekUnits * 100) : null;
+
   var statusLabel, statusBg, statusTxt;
   if(isLiveWeek) {
     statusLabel = onPace ? 'On pace' : 'Behind pace';
     statusBg = onPace ? '#085041' : '#633806';
     statusTxt = onPace ? '#9FE1CB' : '#FAC775';
   } else {
-    var finalPct = weeklyTarget ? (weekUnits/weeklyTarget)*100 : 0;
-    if(finalPct >= 100) { statusLabel='Target exceeded'; statusBg='#085041'; statusTxt='#9FE1CB'; }
-    else if(finalPct >= 98) { statusLabel='Target met'; statusBg='#085041'; statusTxt='#9FE1CB'; }
-    else { statusLabel='Target missed'; statusBg='#791F1F'; statusTxt='#F09595'; }
+    var finalPct = weeklyTarget ? (weekUnits / weeklyTarget) * 100 : 0;
+    if(finalPct >= 100){ statusLabel = 'Target exceeded'; statusBg = '#085041'; statusTxt = '#9FE1CB'; }
+    else if(finalPct >= 98){ statusLabel = 'Target met'; statusBg = '#085041'; statusTxt = '#9FE1CB'; }
+    else { statusLabel = 'Target missed'; statusBg = '#791F1F'; statusTxt = '#F09595'; }
   }
-  var vsTarget = weekProj - weeklyTarget;
-  var vsTargetPct = weeklyTarget ? Math.round((vsTarget/weeklyTarget)*100) : 0;
 
-  // vs last week
-  var lastMon = new Date(wkMon); lastMon.setDate(wkMon.getDate()-7);
-  var lastFri = new Date(lastMon); lastFri.setDate(lastMon.getDate()+4); lastFri.setHours(23,59,59,999);
-  var lastWeekUnits = allRows.filter(function(r){ var dt=new Date(r['Date']); return !isNaN(dt)&&dt>=lastMon&&dt<=lastFri; })
-    .reduce(function(s,r){return s+num(r['Final Units']);},0);
-  var vsLastWk = lastWeekUnits ? ((weekUnits-lastWeekUnits)/lastWeekUnits*100) : null;
-
-  // lots this week
-  var weekLotsSeen=new Set();
-  var weekLots=[];
+  var weekLotsSeen = new Set();
+  var weekLots = [];
   weekRows.forEach(function(r){
-    var lot=(r['Lot Number']||'').trim(); if(!lot||weekLotsSeen.has(lot)) return; weekLotsSeen.add(lot);
-    var lotData=lotMap[lot];
+    var lot = (r['Lot Number']||'').trim(); if(!lot || weekLotsSeen.has(lot)) return; weekLotsSeen.add(lot);
+    var lotData = lotMap[lot];
     weekLots.push({
-      product:lotData?lotData.product:(r['Product']||''),
-      projected:lotData?lotData.projected:num(r['Projected Units']),
-      finalUnits:lotData?lotData.finalUnits:num(r['Final Units']),
-      status:lotData?lotData.status:(r['Complete or Partial']||''),
-      line:(r['Line']||'').trim()
+      product: lotData ? lotData.product : (r['Product']||''),
+      projected: lotData ? lotData.projected : num(r['Projected Units']),
+      finalUnits: lotData ? lotData.finalUnits : num(r['Final Units']),
+      status: lotData ? lotData.status : (r['Complete or Partial']||''),
+      line: (r['Line']||'').trim()
     });
   });
-  var completeLots=weekLots.filter(function(l){return l.status.toLowerCase().includes('complete');}).length;
-  var partialLots=weekLots.filter(function(l){return l.status.toLowerCase().includes('partial');}).length;
+  var completeLots = weekLots.filter(function(l){ return l.status.toLowerCase().includes('complete'); }).length;
+  var partialLots  = weekLots.filter(function(l){ return l.status.toLowerCase().includes('partial'); }).length;
 
-  // last 8 weeks relative to selected week
-  var byWeek={};
-  allRowsCombined.forEach(function(r){
-    var dt=new Date(r['Date']); if(isNaN(dt)) return;
-    var wn=getWeekNum(dt)+'-'+dt.getFullYear();
-    var mon=new Date(dt); mon.setHours(0,0,0,0); var day=mon.getDay(); mon.setDate(mon.getDate()-(day===0?6:day-1));
-    byWeek[wn]={units:(byWeek[wn]?byWeek[wn].units:0)+num(r['Final Units']),mon:mon};
-  });
-  // build 8-week window ending at selected week
-  var weeks8=[]; var ptr=new Date(wkMon);
-  for(var wi=0;wi<8;wi++){
-    var ptrKey=getWeekNum(ptr)+'-'+ptr.getFullYear();
-    weeks8.unshift({key:ptrKey,mon:new Date(ptr),units:byWeek[ptrKey]?byWeek[ptrKey].units:0,num:getWeekNum(ptr)});
-    ptr.setDate(ptr.getDate()-7);
-  }
-
-  // per-line avg for weekly share
-  var d=prepData();
-  var lineAvg=d.lineAvg;
-  var totalAvgPerDay=ALL_LINES.reduce(function(s,line){return s+(lineAvg[line]||0);},0);
-
-  var monFmt=wk.mon.toLocaleDateString('en-US',{month:'short',day:'numeric'});
-  var friEndFmt=wk.fri.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-  var barPct=weeklyTarget?Math.min(Math.round((weekUnits/weeklyTarget)*100),100):0;
-
-  // build lots by line columns
-  var lotsByLine={'Line #1':[],'Line #2':[],'Line #4':[]};
-  weekLots.forEach(function(l){ if(lotsByLine[l.line]) lotsByLine[l.line].push(l); });
-
-  // unique customers this week for filter
   var weekCustomers = Array.from(new Set(weekLots.map(function(l){
     return (l.product||'').split('-')[0].trim();
   }).filter(Boolean))).sort();
 
-  var lotsHTML = '<div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
-    +'<select id="weekCustFilter" onchange="filterWeekLots()" style="padding:5px 10px;border:0.5px solid #444441;border-radius:8px;background:#1e2124;color:#e8e6e0;font-size:12px;">'
-    +'<option value="">All customers</option>'
-    +weekCustomers.map(function(c){ return '<option>'+c+'</option>'; }).join('')
-    +'</select>'
-    +'<span id="weekLotCount" style="font-size:11px;color:#5f5e5a;">'+weekLots.length+' lot'+(weekLots.length!==1?'s':'')+'</span>'
-    +'</div>'
-    +'<div id="weekLotsGrid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">'
-    +buildWeekLotsGrid(weekLots)
-    +'</div>';
-      var k2=lk(line),bg=LINE_BG[k2]||'#2c2c2a',txt=LINE_TXT[k2]||'#e8e6e0',type=LINE_TYPE[k2]||'';
-      var lots=lotsByLine[line]||[];
-      var rows=lots.length===0
-        ?'<div style="padding:10px;font-size:11px;color:#5f5e5a;font-style:italic;">No lots this week</div>'
-        :lots.map(function(l){
-          var parts=(l.product||'').split('-');
-          var brand=parts[0].trim(), product=parts.slice(1).join('-').trim()||brand;
-          var isPartial=l.status.toLowerCase().includes('partial');
-          var sBg=isPartial?'#633806':'#0F6E56', sTxt=isPartial?'#FAC775':'#9FE1CB';
-          var dev=(!isPartial&&l.projected)?((l.finalUnits-l.projected)/l.projected*100):null;
-          var devS=dev!==null?(dev>0?'+':'')+dev.toFixed(1)+'%':'';
-          var devBg=dev===null?'':Math.abs(dev)<=2?'#2c2c2a':dev<0?'#791F1F':'#0F6E56';
-          var devTxt=dev===null?'':Math.abs(dev)<=2?'#888780':dev<0?'#F09595':'#9FE1CB';
-          var runPct=l.projected?Math.min(Math.round((l.finalUnits/l.projected)*100),100):0;
-          return '<div style="padding:8px 10px;border-bottom:0.5px solid #2c2c2a;">'
-            +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">'
-            +'<div style="font-size:11px;font-weight:500;color:#e8e6e0;">'+brand+'</div>'
-            +'<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:10px;background:'+sBg+';color:'+sTxt+';">'+(isPartial?'Partial':'Complete')+'</span>'
-            +'</div>'
-            +'<div style="font-size:11px;color:#888780;margin-bottom:5px;">'+product+'</div>'
-            +'<div style="display:flex;align-items:center;justify-content:space-between;">'
-            +'<span style="font-size:11px;color:#888780;">'+l.finalUnits.toLocaleString()+' <span style="color:#5f5e5a;">/ '+(l.projected?l.projected.toLocaleString():'—')+' proj</span></span>'
-            +(isPartial
-              ?'<div style="height:3px;background:#2c2c2a;border-radius:2px;width:60px;"><div style="height:100%;width:'+runPct+'%;background:#EF9F27;border-radius:2px;"></div></div>'
-              :(devS?'<span style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:6px;background:'+devBg+';color:'+devTxt+';">'+devS+'</span>':'')
-            )
-            +'</div></div>';
-        }).join('');
-      return '<div style="background:#141618;border:0.5px solid #2c2c2a;border-radius:10px;overflow:hidden;">'
-        +'<div style="padding:8px 10px;border-bottom:0.5px solid #2c2c2a;display:flex;align-items:center;gap:6px;">'
-        +'<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:6px;background:'+bg+';color:'+txt+';">'+line+'</span>'
-        +'<span style="font-size:10px;color:#888780;">'+type+'</span>'
-        +'</div>'+rows+'</div>';
-    }).join('')
-    +'</div>';
+  window._weekLots = weekLots;
 
-  // chart bars
-  var maxWk=Math.max.apply(null,weeks8.map(function(w){return byWeek[w]||0;}).concat([weeklyTarget]));
-  var chartBars=weeks8.map(function(w){
-    var u=byWeek[w]||0, isCur=parseInt(w)===weekNum;
-    var h=maxWk?Math.round((u/maxWk)*100):0;
-    var tH=maxWk?Math.round((weeklyTarget/maxWk)*100):0;
-    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end;position:relative;">'
-      +'<div style="font-size:9px;color:'+(isCur?'#85B7EB':'#85B7EB');'opacity:'+(isCur?'1':'0.7')+';">'+(u/1000).toFixed(0)+'k'+(isCur?'*':'')+'</div>'
-      +'<div style="width:100%;height:'+h+'%;background:'+(isCur?'rgba(55,138,221,0.35)':'#378ADD')+';border-radius:3px 3px 0 0;'+(isCur?'border:0.5px dashed #378ADD;':'opacity:0.7;')+'"></div>'
-      +'<div style="font-size:9px;color:'+(isCur?'#1D9E75':'#5f5e5a')+';font-weight:'+(isCur?'500':'400')+';">Wk'+w+'</div>'
-      +'</div>';
-  }).join('');
+  var d = prepData();
+  var lineAvg = d.lineAvg;
+  var totalAvgPerDay = ALL_LINES.reduce(function(s,line){ return s + (lineAvg[line]||0); }, 0);
 
-  var prevDisabled = false; // could limit to earliest data week if needed
-  var nextDisabled = isLiveWeek;
+  var byWeekMap = {};
+  allRowsCombined.forEach(function(r){
+    var dt = new Date(r['Date']); if(isNaN(dt)) return;
+    var wn = getWeekNum(dt);
+    var yr = dt.getFullYear();
+    var key = yr + '-' + String(wn).padStart(2,'0');
+    var mon = new Date(dt); mon.setHours(0,0,0,0);
+    var dw = mon.getDay(); mon.setDate(mon.getDate() - (dw===0?6:dw-1));
+    if(!byWeekMap[key]) byWeekMap[key] = {units:0, mon:mon, num:wn};
+    byWeekMap[key].units += num(r['Final Units']);
+  });
+  var weeks8 = [];
+  var ptr = new Date(wkMon);
+  for(var wi=0;wi<8;wi++){
+    var ptrYr = ptr.getFullYear();
+    var ptrWn = getWeekNum(ptr);
+    var ptrKey = ptrYr + '-' + String(ptrWn).padStart(2,'0');
+    weeks8.unshift({ key:ptrKey, mon:new Date(ptr), units:byWeekMap[ptrKey]?byWeekMap[ptrKey].units:0, num:ptrWn });
+    ptr.setDate(ptr.getDate()-7);
+  }
+
+  var monFmt = wkMon.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  var friEndFmt = wkFri.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  var barPct = weeklyTarget ? Math.min(Math.round((weekUnits/weeklyTarget)*100),100) : 0;
+
+  var targetLabel = targetIsFullySet
+    ? '<span style="color:#1D9E75">(set)</span>'
+    : targetIsEstimated
+    ? '<span style="color:#EF9F27">(est.)</span>'
+    : '(avg)';
+
   var weekNavHTML =
     '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;" id="week-nav-anchor">'
-    +'<button onclick="navWeek(-1)" '+(prevDisabled?'disabled':'')+' style="width:28px;height:28px;flex-shrink:0;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:'+(prevDisabled?'default':'pointer')+';color:'+(prevDisabled?'#444441':'#e8e6e0')+';font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8249;</button>'
-    +'<div onclick="openWeekPicker()" style="text-align:center;width:260px;flex-shrink:0;cursor:pointer;padding:4px 12px;border-radius:8px;border:0.5px solid #444441;background:transparent;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'transparent\'">'
-    +'<div style="font-size:13px;font-weight:500;color:#e8e6e0;white-space:nowrap;">Week '+weekNum+' &nbsp;·&nbsp; '+monFmt+' – '+friEndFmt+' &#x25BE;</div>'
-    +'<div style="font-size:10px;color:#5f5e5a;margin-top:2px;height:14px;">'+(isLiveWeek?'(This week)':daysElapsed+' of 5 days')+'</div>'
-    +'</div>'
-    +'<button onclick="navWeek(1)" '+(nextDisabled?'disabled':'')+' style="width:28px;height:28px;flex-shrink:0;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:'+(nextDisabled?'default':'pointer')+';color:'+(nextDisabled?'#444441':'#e8e6e0')+';font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8250;</button>'
-    +'<div style="width:70px;flex-shrink:0;display:flex;justify-content:flex-start;">'
-    +(isLiveWeek
-      ?'<span style="font-size:10px;color:#1D9E75;font-weight:500;padding:2px 8px;border-radius:10px;background:#085041;white-space:nowrap;">&#8635; Live</span>'
-      :'<button onclick="goWeekLive()" style="padding:4px 12px;border-radius:8px;border:0.5px solid #1D9E75;background:transparent;cursor:pointer;color:#1D9E75;font-size:11px;font-weight:500;font-family:system-ui;white-space:nowrap;">Live</button>')
-    +'</div></div>';
+    + '<button onclick="navWeek(-1)" style="width:28px;height:28px;flex-shrink:0;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:pointer;color:#e8e6e0;font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8249;</button>'
+    + '<div onclick="openWeekPicker()" style="text-align:center;width:260px;flex-shrink:0;cursor:pointer;padding:4px 12px;border-radius:8px;border:0.5px solid #444441;background:transparent;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'transparent\'">'
+    + '<div style="font-size:13px;font-weight:500;color:#e8e6e0;white-space:nowrap;">Week ' + weekNum + ' &nbsp;&middot;&nbsp; ' + monFmt + ' \u2013 ' + friEndFmt + ' &#x25BE;</div>'
+    + '<div style="font-size:10px;color:#5f5e5a;margin-top:2px;height:14px;">' + (isLiveWeek ? '(This week)' : daysElapsed + ' of 5 days') + '</div>'
+    + '</div>'
+    + '<button onclick="navWeek(1)" ' + (isLiveWeek ? 'disabled' : '') + ' style="width:28px;height:28px;flex-shrink:0;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:'+(isLiveWeek?'default':'pointer')+';color:'+(isLiveWeek?'#444441':'#e8e6e0')+';font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8250;</button>'
+    + '<div style="width:70px;flex-shrink:0;display:flex;justify-content:flex-start;">'
+    + (isLiveWeek
+        ? '<span style="font-size:10px;color:#1D9E75;font-weight:500;padding:2px 8px;border-radius:10px;background:#085041;white-space:nowrap;">&#8635; Live</span>'
+        : '<button onclick="goWeekLive()" style="padding:4px 12px;border-radius:8px;border:0.5px solid #1D9E75;background:transparent;cursor:pointer;color:#1D9E75;font-size:11px;font-weight:500;font-family:system-ui;white-space:nowrap;">Live</button>')
+    + '</div></div>';
 
-  document.getElementById('content').innerHTML=
+  document.getElementById('content').innerHTML =
     '<div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:12px;padding:1rem;margin-bottom:10px;">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">'
-    +weekNavHTML
-    +'<span style="font-size:11px;font-weight:500;padding:4px 12px;border-radius:10px;background:'+statusBg+';color:'+statusTxt+';">'+statusLabel+'</span>'
-    +'</div>'
-    +'<div style="display:flex;gap:10px;flex-wrap:wrap;">'
-    +'<div style="flex:1;min-width:120px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;padding:.75rem 1rem;">'
-    +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Units this week</div>'
-    +'<div style="font-size:22px;font-weight:500;color:#378ADD;">'+weekUnits.toLocaleString()+'</div>'
-    +'<div style="font-size:11px;color:#5f5e5a;margin-bottom:6px;">of '+weeklyTarget.toLocaleString()+' '+(targetIsEstimated?'<span style="color:#EF9F27">(est.)</span>':targetIsFullySet?'<span style="color:#1D9E75">(set)</span>':'(avg)')+'</div>'
-    +'<div style="height:6px;background:#2c2c2a;border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+barPct+'%;background:#378ADD;border-radius:3px;"></div></div>'
-    +'</div>'
-    +'<div style="width:0.5px;background:#2c2c2a;flex-shrink:0;align-self:stretch;"></div>'
-    +'<div style="flex:1;min-width:120px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;padding:.75rem 1rem;">'
-    +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">'+(isLiveWeek?'Week-end projection':'Final output')+'</div>'
-    +'<div style="font-size:22px;font-weight:500;color:'+(onPace?'#1D9E75':'#EF9F27')+';">'+(isLiveWeek?weekProj.toLocaleString():weekUnits.toLocaleString())+'</div>'
-    +'<div style="font-size:11px;color:#5f5e5a;">target: '+weeklyTarget.toLocaleString()+'</div>'
-    +'</div>'
-    +'<div style="width:0.5px;background:#2c2c2a;flex-shrink:0;align-self:stretch;"></div>'
-    +'<div style="flex:1;min-width:100px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;padding:.75rem 1rem;">'
-    +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Vs target</div>'
-    +'<div style="font-size:22px;font-weight:500;color:'+(onPace?'#1D9E75':'#EF9F27')+'">'+(onPace?'+':'')+vsTargetPct+'%</div>'
-    +'<div style="font-size:11px;color:#5f5e5a;">'+(onPace?'+':'')+vsTarget.toLocaleString()+' units</div>'
-    +'</div>'
-    +'<div style="width:0.5px;background:#2c2c2a;flex-shrink:0;align-self:stretch;"></div>'
-    +(vsLastWk!==null
-      ?'<div style="flex:1;min-width:100px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;padding:.75rem 1rem;">'
-      +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Vs last week</div>'
-      +'<div style="font-size:22px;font-weight:500;color:'+(vsLastWk>=0?'#1D9E75':'#EF9F27')+'">'+(vsLastWk>=0?'+':'')+vsLastWk.toFixed(1)+'%</div>'
-      +'<div style="font-size:11px;color:#5f5e5a;">Wk '+(weekNum-1)+': '+lastWeekUnits.toLocaleString()+'</div>'
-      +'</div>' : ''
-    )
-    +'<div style="width:0.5px;background:#2c2c2a;flex-shrink:0;align-self:stretch;"></div>'
-    +'<div style="flex:1;min-width:100px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;padding:.75rem 1rem;">'
-    +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Lots this week</div>'
-    +'<div style="font-size:22px;font-weight:500;color:#e8e6e0;">'+completeLots+'</div>'
-    +'<div style="font-size:11px;color:#5f5e5a;">'+partialLots+' partial in progress</div>'
-    +'</div>'
-    +'</div></div>'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">'
+    + weekNavHTML
+    + '<span style="font-size:11px;font-weight:500;padding:4px 12px;border-radius:10px;background:'+statusBg+';color:'+statusTxt+';">'+statusLabel+'</span>'
+    + '</div>'
+    + '<div style="display:flex;gap:10px;flex-wrap:wrap;">'
+    + '<div style="flex:1;min-width:120px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;padding:.75rem 1rem;">'
+    + '<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Units this week</div>'
+    + '<div style="font-size:22px;font-weight:500;color:#378ADD;">'+weekUnits.toLocaleString()+'</div>'
+    + '<div style="font-size:11px;color:#5f5e5a;margin-bottom:6px;">of '+weeklyTarget.toLocaleString()+' '+targetLabel+'</div>'
+    + '<div style="height:6px;background:#2c2c2a;border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+barPct+'%;background:#378ADD;border-radius:3px;"></div></div>'
+    + '</div>'
+    + '<div style="width:0.5px;background:#2c2c2a;flex-shrink:0;align-self:stretch;"></div>'
+    + '<div style="flex:1;min-width:120px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;padding:.75rem 1rem;">'
+    + '<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">'+(isLiveWeek?'Week-end projection':'Final output')+'</div>'
+    + '<div style="font-size:22px;font-weight:500;color:'+(onPace?'#1D9E75':'#EF9F27')+';">'+(isLiveWeek?weekProj.toLocaleString():weekUnits.toLocaleString())+'</div>'
+    + '<div style="font-size:11px;color:#5f5e5a;">target: '+weeklyTarget.toLocaleString()+'</div>'
+    + '</div>'
+    + '<div style="width:0.5px;background:#2c2c2a;flex-shrink:0;align-self:stretch;"></div>'
+    + '<div style="flex:1;min-width:100px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;padding:.75rem 1rem;">'
+    + '<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Vs target</div>'
+    + '<div style="font-size:22px;font-weight:500;color:'+(onPace?'#1D9E75':'#EF9F27')+'">'+(onPace?'+':'')+vsTargetPct+'%</div>'
+    + '<div style="font-size:11px;color:#5f5e5a;">'+(onPace?'+':'')+vsTarget.toLocaleString()+' units</div>'
+    + '</div>'
+    + '<div style="width:0.5px;background:#2c2c2a;flex-shrink:0;align-self:stretch;"></div>'
+    + (vsLastWk !== null
+        ? '<div style="flex:1;min-width:100px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;padding:.75rem 1rem;">'
+          + '<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Vs last week</div>'
+          + '<div style="font-size:22px;font-weight:500;color:'+(vsLastWk>=0?'#1D9E75':'#EF9F27')+'">'+(vsLastWk>=0?'+':'')+vsLastWk.toFixed(1)+'%</div>'
+          + '<div style="font-size:11px;color:#5f5e5a;">Wk '+(weekNum-1)+': '+lastWeekUnits.toLocaleString()+'</div>'
+          + '</div>'
+          + '<div style="width:0.5px;background:#2c2c2a;flex-shrink:0;align-self:stretch;"></div>'
+        : '')
+    + '<div style="flex:1;min-width:100px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;padding:.75rem 1rem;">'
+    + '<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">Lots this week</div>'
+    + '<div style="font-size:22px;font-weight:500;color:#e8e6e0;">'+completeLots+'</div>'
+    + '<div style="font-size:11px;color:#5f5e5a;">'+partialLots+' partial in progress</div>'
+    + '</div>'
+    + '</div></div>'
 
-    +'<div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:12px;padding:1rem;margin-bottom:10px;">'
-    +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.05em;font-weight:500;margin-bottom:10px;">Weekly output by line</div>'
-    +'<div style="display:flex;gap:10px;flex-wrap:wrap;">'
-    +ALL_LINES.map(function(line){
-      var k2=lk(line),color=LINE_COLOR[k2]||'#888780',txt=LINE_TXT[k2]||'#e8e6e0',type=LINE_TYPE[k2]||'';
-      var u=weekByLine[line]||0;
-      var lineShare=totalAvgPerDay?(lineAvg[line]||0)/totalAvgPerDay:0;
-      var lineWeeklyShare=Math.round(weeklyTarget*lineShare);
-      var pct=lineWeeklyShare?Math.min(Math.round((u/lineWeeklyShare)*100),100):0;
-      return '<div style="flex:1;min-width:140px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;padding:.75rem 1rem;">'
-        +'<div style="font-size:10px;color:'+txt+';text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">'+line+' — '+type+'</div>'
-        +'<div style="font-size:18px;font-weight:500;color:'+color+';">'+u.toLocaleString()+'</div>'
-        +'<div style="font-size:10px;color:#5f5e5a;margin-bottom:6px;">of ~'+lineWeeklyShare.toLocaleString()+' weekly share</div>'
-        +'<div style="height:5px;background:#2c2c2a;border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+pct+'%;background:'+color+';border-radius:3px;"></div></div>'
-        +'</div>';
-    }).join('')
-    +'</div></div>'
+    + '<div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:12px;padding:1rem;margin-bottom:10px;">'
+    + '<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.05em;font-weight:500;margin-bottom:10px;">Weekly output by line</div>'
+    + '<div style="display:flex;gap:10px;flex-wrap:wrap;">'
+    + ALL_LINES.map(function(line){
+        var k2=lk(line), color=LINE_COLOR[k2]||'#888780', txt=LINE_TXT[k2]||'#e8e6e0', type=LINE_TYPE[k2]||'';
+        var u = weekByLine[line] || 0;
+        var lineShare = totalAvgPerDay ? (lineAvg[line]||0) / totalAvgPerDay : 0;
+        var lineWeeklyShare = Math.round(weeklyTarget * lineShare);
+        var p = lineWeeklyShare ? Math.min(Math.round((u/lineWeeklyShare)*100),100) : 0;
+        return '<div style="flex:1;min-width:140px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;padding:.75rem 1rem;">'
+          + '<div style="font-size:10px;color:'+txt+';text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">'+line+' \u2014 '+type+'</div>'
+          + '<div style="font-size:18px;font-weight:500;color:'+color+';">'+u.toLocaleString()+'</div>'
+          + '<div style="font-size:10px;color:#5f5e5a;margin-bottom:6px;">of ~'+lineWeeklyShare.toLocaleString()+' weekly share</div>'
+          + '<div style="height:5px;background:#2c2c2a;border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+p+'%;background:'+color+';border-radius:3px;"></div></div>'
+          + '</div>';
+      }).join('')
+    + '</div></div>'
 
-    +'<div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:12px;padding:1rem;margin-bottom:10px;">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">'
-    +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.05em;font-weight:500;">Weekly units — last 8 weeks</div>'
-    +'<div style="display:flex;gap:16px;font-size:11px;color:#888780;">'
-    +'<span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:16px;border-top:2px dashed #1D9E75;"></span>Target: '+weeklyTarget.toLocaleString()+'</span>'
-    +'</div></div>'
-    +'<div style="position:relative;height:200px;"><canvas id="cWeeklyW"></canvas></div>'
-    +'</div>'
+    + '<div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:12px;padding:1rem;margin-bottom:10px;">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">'
+    + '<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.05em;font-weight:500;">Weekly units \u2014 last 8 weeks</div>'
+    + '<div style="font-size:11px;color:#888780;display:flex;align-items:center;gap:6px;"><span style="display:inline-block;width:16px;border-top:2px dashed #1D9E75;"></span>Target: '+weeklyTarget.toLocaleString()+'</div>'
+    + '</div>'
+    + '<div style="position:relative;height:200px;"><canvas id="cWeeklyW"></canvas></div>'
+    + '</div>'
 
-    +'<div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:12px;padding:1rem;">'
-    +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.05em;font-weight:500;margin-bottom:10px;">Lots this week</div>'
-    +lotsHTML
-    +'</div>';
+    + '<div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:12px;padding:1rem;">'
+    + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">'
+    + '<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.05em;font-weight:500;">Lots this week</div>'
+    + '<select id="weekCustFilter" onchange="filterWeekLots()" style="padding:5px 10px;border:0.5px solid #444441;border-radius:8px;background:#1e2124;color:#e8e6e0;font-size:12px;">'
+    + '<option value="">All customers</option>'
+    + weekCustomers.map(function(c){ return '<option>' + c + '</option>'; }).join('')
+    + '</select>'
+    + '<span id="weekLotCount" style="font-size:11px;color:#5f5e5a;">' + weekLots.length + ' lot' + (weekLots.length !== 1 ? 's' : '') + '</span>'
+    + '</div>'
+    + '<div id="weekLotsGrid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">'
+    + buildWeekLotsGrid(weekLots)
+    + '</div></div>';
 
-  // render chart
-  var weekLabels=weeks8.map(function(w){return w.mon.toDateString()===wkMon.toDateString()?'Wk '+w.num+' (this)':'Wk '+w.num;});
-  var weekData=weeks8.map(function(w){return w.units;});
-  var weekColors=weeks8.map(function(w){return w.mon.toDateString()===wkMon.toDateString()?'rgba(55,138,221,0.35)':'#378ADD';});
-  charts.weeklyW=new Chart(document.getElementById('cWeeklyW'),{
-    type:'bar',
-    data:{labels:weekLabels,datasets:[
-      {type:'bar',label:'Units',data:weekData,backgroundColor:weekColors,borderRadius:4,order:2},
-      {type:'line',label:'Weekly target',data:weeks8.map(function(){return weeklyTarget;}),borderColor:'#1D9E75',borderWidth:2,borderDash:[6,4],pointRadius:0,fill:false,tension:0,order:1}
+  var weekLabels = weeks8.map(function(w){ return w.mon.toDateString()===wkMon.toDateString() ? 'Wk '+w.num+' (this)' : 'Wk '+w.num; });
+  var weekData   = weeks8.map(function(w){ return w.units; });
+  var weekColors = weeks8.map(function(w){ return w.mon.toDateString()===wkMon.toDateString() ? 'rgba(55,138,221,0.35)' : '#378ADD'; });
+
+  charts.weeklyW = new Chart(document.getElementById('cWeeklyW'), {
+    type: 'bar',
+    data: { labels: weekLabels, datasets: [
+      { type:'bar', label:'Units', data:weekData, backgroundColor:weekColors, borderRadius:4, order:2 },
+      { type:'line', label:'Weekly target', data:weeks8.map(function(){ return weeklyTarget; }), borderColor:'#1D9E75', borderWidth:2, borderDash:[6,4], pointRadius:0, fill:false, tension:0, order:1 }
     ]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){if(ctx.dataset.label==='Weekly target')return 'Target: '+weeklyTarget.toLocaleString();return 'Units: '+ctx.raw.toLocaleString();}}}},scales:{x:{ticks:{color:'#888780',font:{size:10},maxRotation:20},grid:{color:'#2c2c2a'}},y:{ticks:{color:'#888780',callback:function(v){return(v/1000).toFixed(0)+'k';}},grid:{color:'#2c2c2a'}}}},
-    plugins:[{id:'wkLabels',afterDatasetsDraw:function(chart){var ctx2=chart.ctx,meta=chart.getDatasetMeta(0);ctx2.save();ctx2.font='500 10px system-ui,sans-serif';ctx2.textAlign='center';ctx2.textBaseline='bottom';meta.data.forEach(function(bar,i){ctx2.fillStyle=weeks8[i].mon.toDateString()===wkMon.toDateString()?'rgba(133,183,235,0.7)':'#85B7EB';ctx2.fillText(weekData[i].toLocaleString(),bar.x,bar.y-4);});ctx2.restore();}}]
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:function(ctx){ return ctx.dataset.label==='Weekly target' ? 'Target: '+weeklyTarget.toLocaleString() : 'Units: '+ctx.raw.toLocaleString(); }}}},
+      scales:{ x:{ticks:{color:'#888780',font:{size:10},maxRotation:20},grid:{color:'#2c2c2a'}}, y:{ticks:{color:'#888780',callback:function(v){ return (v/1000).toFixed(0)+'k'; }},grid:{color:'#2c2c2a'}} }
+    },
+    plugins:[{ id:'wkLabels', afterDatasetsDraw:function(chart){
+      var ctx2=chart.ctx, meta=chart.getDatasetMeta(0);
+      ctx2.save(); ctx2.font='500 10px system-ui,sans-serif'; ctx2.textAlign='center'; ctx2.textBaseline='bottom';
+      meta.data.forEach(function(bar,i){
+        ctx2.fillStyle = weeks8[i].mon.toDateString()===wkMon.toDateString() ? 'rgba(133,183,235,0.7)' : '#85B7EB';
+        ctx2.fillText(weekData[i].toLocaleString(), bar.x, bar.y-4);
+      });
+      ctx2.restore();
+    }}]
   });
 }
 
@@ -1418,7 +1348,7 @@ function renderPerformance() {
     +'<div><div style="font-size:11px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Units to date</div><div style="font-size:20px;font-weight:500;color:#94A3B8">'+totalUnits.toLocaleString()+'</div></div>'
     +'<div><div style="font-size:11px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Year-end projection</div><div style="font-size:20px;font-weight:500;color:'+(onTrack?'#1D9E75':'#EF9F27')+'">'+yearProj.toLocaleString()+'</div></div>'
     +'<div><div style="font-size:11px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Year-end target</div><div style="font-size:20px;font-weight:500">3,927,000</div></div>'
-    +'<div><div style="font-size:11px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">vs target</div><div style="font-size:20px;font-weight:500;color:'+(onTrack?'#1D9E75':'#EF9F27')+'">'+(onTrack?'+':'')+toTarget.toLocaleString()+' <span style="font-size:13px">('+targetPct+'%)</span></div></div>'
+    +'<div><div style="font-size:11px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Vs target</div><div style="font-size:20px;font-weight:500;color:'+(onTrack?'#1D9E75':'#EF9F27')+'">'+(onTrack?'+':'')+toTarget.toLocaleString()+' <span style="font-size:13px">('+targetPct+'%)</span></div></div>'
     +'</div>'
     +'<div style="position:relative;margin-bottom:36px"><div style="background:#2c2c2a;border-radius:8px;height:14px;overflow:visible;position:relative">'
     +'<div style="position:absolute;top:0;left:0;height:100%;width:100%;background:'+(onTrack?'#1D9E75':'#EF9F27')+';border-radius:8px;opacity:0.2"></div>'
@@ -1482,7 +1412,6 @@ function renderPerformance() {
   document.getElementById('jar-legend').innerHTML='<table style="width:100%;border-collapse:collapse;font-size:11px"><tbody>'+jarLegHTML+'</tbody></table>';
 
   charts.jar=new Chart(document.getElementById('cJar'),{type:'doughnut',data:{labels:jarEntries.map(function(e){return e[0];}),datasets:[{data:jarEntries.map(function(e){return e[1];}),backgroundColor:JAR_COLORS,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){var v=ctx.raw,p=jarTotal?((v/jarTotal)*100).toFixed(1):0;return v.toLocaleString()+' units ('+p+'%)';}}}}}});
-  charts.weekly=new Chart(document.getElementById('cWeekly'),{type:'bar',data:{labels:weekLabels,datasets:[{type:'bar',label:'Units produced',data:weekData26,backgroundColor:weekColors,borderRadius:4,order:2},{type:'line',label:'8-week avg',data:weeks.map(function(){return weekAvg;}),borderColor:'#EF9F27',borderWidth:2,borderDash:[6,4],pointRadius:0,pointHoverRadius:0,fill:false,tension:0,order:1},{type:'line',label:'Weekly target',data:weeks.map(function(){return WEEKLY_TARGET;}),borderColor:'#1D9E75',borderWidth:2,borderDash:[6,4],pointRadius:0,pointHoverRadius:0,fill:false,tension:0,order:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){if(ctx.dataset.label==='8-week avg')return '8-wk avg: '+weekAvg.toLocaleString();if(ctx.dataset.label==='Weekly target')return 'Weekly target: '+WEEKLY_TARGET.toLocaleString();return 'Units: '+ctx.raw.toLocaleString();}}}},scales:{x:{ticks:{color:'#888780',font:{size:10},maxRotation:20},grid:{color:'#2c2c2a'}},y:{ticks:{color:'#888780',callback:function(v){return(v/1000).toFixed(0)+'k';}},grid:{color:'#2c2c2a'}}}},plugins:[{id:'barLabels',afterDatasetsDraw:function(chart){var ctx2=chart.ctx,meta=chart.getDatasetMeta(0);ctx2.save();ctx2.font='500 10px system-ui,sans-serif';ctx2.textAlign='center';ctx2.textBaseline='bottom';meta.data.forEach(function(bar,i){ctx2.fillStyle=parseInt(weeks[i])===cwn?'rgba(133,183,235,0.7)':'#85B7EB';ctx2.fillText(weekData26[i].toLocaleString(),bar.x,bar.y-4);});ctx2.restore();}}]});
 }
 
 function renderDetail() {
@@ -1529,11 +1458,8 @@ function statusSortWeight(l) {
 }
 
 function lotSortKey(l) {
-  // returns a comparable value for run order within a day
-  // prefer start time, fall back to sheet row index
   if (l.startTime) {
     var t = l.startTime.trim();
-    // normalise 12hr (e.g. "6:38 AM") and 24hr (e.g. "06:38") to minutes since midnight
     var m12 = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
     if (m12) {
       var h=parseInt(m12[1]), min=parseInt(m12[2]), ampm=m12[3].toUpperCase();
@@ -1544,7 +1470,7 @@ function lotSortKey(l) {
     var m24 = t.match(/^(\d{1,2}):(\d{2})$/);
     if (m24) return parseInt(m24[1])*60+parseInt(m24[2]);
   }
-  return 10000 + (l.rowIdx||0); // no start time — fall back to sheet row order, after any timed lots
+  return 10000 + (l.rowIdx||0);
 }
 
 function updateOpsTable(){
