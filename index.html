@@ -88,14 +88,17 @@
       </div>
     </div>
     <div class="nav-area">
-      <div class="nav-top">
-        <button class="active" onclick="setTop('summary')">Summary</button>
-        <button onclick="setTop('detail')">Detail</button>
-      </div>
-      <div class="nav-sub" id="sub-nav">
-        <button class="active" onclick="setSub('today')">Daily</button>
-        <button onclick="setSub('weekly')">Weekly</button>
-        <button onclick="setSub('performance')">Trend</button>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="display:flex;gap:2px;padding:3px;background:#1e2124;border:0.5px solid #2c2c2a;border-radius:8px;">
+          <button onclick="setTop('summary')" id="btn-summary" style="padding:5px 16px;border-radius:6px;border:none;background:#378ADD;color:#fff;font-weight:500;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Summary</button>
+          <button onclick="setTop('detail')" id="btn-detail" style="padding:5px 16px;border-radius:6px;border:none;background:transparent;color:#888780;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Detail</button>
+        </div>
+        <div style="width:0.5px;height:28px;background:#2c2c2a;flex-shrink:0;" id="sub-nav-divider"></div>
+        <div style="display:flex;gap:2px;padding:3px;background:#1e2124;border:0.5px solid #2c2c2a;border-radius:8px;" id="sub-nav">
+          <button onclick="setSub('today')" id="btn-today" style="padding:5px 16px;border-radius:6px;border:none;background:transparent;color:#888780;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Daily</button>
+          <button onclick="setSub('weekly')" id="btn-weekly" style="padding:5px 16px;border-radius:6px;border:none;background:#1D9E75;color:#fff;font-weight:500;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Weekly</button>
+          <button onclick="setSub('performance')" id="btn-performance" style="padding:5px 16px;border-radius:6px;border:none;background:transparent;color:#888780;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Trend</button>
+        </div>
       </div>
     </div>
   </div>
@@ -349,17 +352,29 @@ function startRefreshTimers() {
 
 function setTop(v) {
   topView = v;
-  document.querySelectorAll('.nav-top button').forEach(function(b,i){
-    b.classList.toggle('active',(i===0&&v==='summary')||(i===1&&v==='detail'));
-  });
-  document.getElementById('sub-nav').style.display = v==='summary'?'flex':'none';
+  var isSummary = v === 'summary';
+  var btnS = document.getElementById('btn-summary');
+  var btnD = document.getElementById('btn-detail');
+  if(btnS){ btnS.style.background = isSummary ? '#378ADD' : 'transparent'; btnS.style.color = isSummary ? '#fff' : '#888780'; btnS.style.fontWeight = isSummary ? '500' : '400'; }
+  if(btnD){ btnD.style.background = !isSummary ? '#378ADD' : 'transparent'; btnD.style.color = !isSummary ? '#fff' : '#888780'; btnD.style.fontWeight = !isSummary ? '500' : '400'; }
+  var subNav = document.getElementById('sub-nav');
+  var subDiv = document.getElementById('sub-nav-divider');
+  if(subNav) subNav.style.display = isSummary ? 'flex' : 'none';
+  if(subDiv) subDiv.style.display = isSummary ? 'block' : 'none';
   render();
 }
 
 function setSub(v) {
   subView = v;
-  document.querySelectorAll('.nav-sub button').forEach(function(b,i){
-    b.classList.toggle('active',(i===0&&v==='today')||(i===1&&v==='weekly')||(i===2&&v==='performance'));
+  var map = { today:'btn-today', weekly:'btn-weekly', performance:'btn-performance' };
+  ['today','weekly','performance'].forEach(function(k){
+    var btn = document.getElementById(map[k]);
+    if(!btn) return;
+    var isActive = k === v;
+    var activeBg = k === 'today' || k === 'performance' ? '#378ADD' : '#1D9E75';
+    btn.style.background = isActive ? activeBg : 'transparent';
+    btn.style.color = isActive ? '#fff' : '#888780';
+    btn.style.fontWeight = isActive ? '500' : '400';
   });
   render();
 }
