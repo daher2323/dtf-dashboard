@@ -9,7 +9,7 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, sans-serif; background: #141618; color: #e8e6e0; font-size: 14px; min-height: 100vh; }
   .shell { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
-  .top-bar { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; position: sticky; top: 0; z-index: 100; background: #141618; padding: 1rem 1.5rem; margin: 0 -1.5rem 1.5rem; border-bottom: 0.5px solid #2c2c2a; }
+  .top-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; position: sticky; top: 0; z-index: 100; background: #141618; padding: 1rem 1.5rem; margin: 0 -1.5rem 1.5rem; border-bottom: 0.5px solid #2c2c2a; }
   .brand { display: flex; align-items: center; gap: 14px; }
   .brand-name { font-size: 20px; font-weight: 500; color: #e8e6e0; line-height: 1.2; }
   .brand-sub { font-size: 13px; color: #888780; margin-top: 3px; }
@@ -95,7 +95,7 @@
         </div>
         <div style="width:0.5px;height:28px;background:#2c2c2a;flex-shrink:0;" id="sub-nav-divider"></div>
         <div style="display:flex;gap:2px;padding:3px;background:#1e2124;border:0.5px solid #2c2c2a;border-radius:8px;" id="sub-nav">
-          <button onclick="setSub('today')" id="btn-today" style="padding:5px 16px;border-radius:6px;border:1.5px solid transparent;background:transparent;color:#888780;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Daily</button>
+          <button onclick="setSub('today')" id="btn-today" style="padding:5px 16px;border-radius:6px;border:1.5px solid #378ADD;background:#0C447C;color:#85B7EB;font-weight:500;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Daily</button>
           <button onclick="setSub('weekly')" id="btn-weekly" style="padding:5px 16px;border-radius:6px;border:1.5px solid transparent;background:transparent;color:#888780;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Weekly</button>
           <button onclick="setSub('performance')" id="btn-performance" style="padding:5px 16px;border-radius:6px;border:1.5px solid transparent;background:transparent;color:#888780;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Trend</button>
         </div>
@@ -359,8 +359,8 @@ function setTop(v) {
   if(btnD){ btnD.style.background = !isSummary ? '#0C447C' : 'transparent'; btnD.style.color = !isSummary ? '#85B7EB' : '#888780'; btnD.style.fontWeight = !isSummary ? '500' : '400'; btnD.style.border = !isSummary ? '1.5px solid #378ADD' : '1.5px solid transparent'; }
   var subNav = document.getElementById('sub-nav');
   var subDiv = document.getElementById('sub-nav-divider');
-  if(subNav){ subNav.style.opacity = isSummary ? '1' : '0.3'; subNav.style.pointerEvents = isSummary ? 'auto' : 'none'; }
-  if(subDiv){ subDiv.style.opacity = isSummary ? '1' : '0.3'; }
+  if(subNav){ subNav.style.opacity = '1'; subNav.style.pointerEvents = 'auto'; }
+  if(subDiv){ subDiv.style.opacity = '1'; }
   render();
 }
 
@@ -1469,15 +1469,51 @@ function renderPerformance() {
 }
 
 function renderDetail() {
-  var lots=Object.values(lotMap).filter(Boolean);
+  // filter allRows by subView scope
+  var now = new Date();
+  var scopeLabel = 'All lots';
+  var filteredLotKeys = null;
+
+  if(subView === 'today') {
+    var viewStr = productionDays[selectedDayIdx] || ((now.getMonth()+1)+'/'+now.getDate()+'/'+now.getFullYear());
+    var viewDate = new Date(viewStr);
+    scopeLabel = 'Daily \u2014 ' + viewDate.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+    filteredLotKeys = new Set();
+    allRows.forEach(function(r){
+      var dt = new Date(r['Date']); if(isNaN(dt)) return;
+      if(dt.getFullYear()===viewDate.getFullYear()&&dt.getMonth()===viewDate.getMonth()&&dt.getDate()===viewDate.getDate())
+        filteredLotKeys.add((r['Lot Number']||'').trim());
+    });
+  } else if(subView === 'weekly') {
+    if(!selectedWeekMon) selectedWeekMon = getCurrentWeekMon();
+    var wkFri = new Date(selectedWeekMon); wkFri.setDate(selectedWeekMon.getDate()+4); wkFri.setHours(23,59,59,999);
+    var wkEnd = selectedWeekMon.toDateString()===getCurrentWeekMon().toDateString() ? now : wkFri;
+    scopeLabel = 'Weekly \u2014 Wk '+getWeekNum(selectedWeekMon)+' ('+selectedWeekMon.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' \u2013 '+wkFri.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+')';
+    filteredLotKeys = new Set();
+    allRows.forEach(function(r){
+      var dt = new Date(r['Date']); if(isNaN(dt)) return;
+      if(dt >= selectedWeekMon && dt <= wkEnd) filteredLotKeys.add((r['Lot Number']||'').trim());
+    });
+  } else {
+    scopeLabel = 'Trend \u2014 All lots year-to-date';
+  }
+
+  var lots = Object.values(lotMap).filter(Boolean).filter(function(l){
+    return filteredLotKeys ? filteredLotKeys.has(l.lot) : true;
+  });
+
   var products=Array.from(new Set(lots.map(function(l){return l.product;}).filter(Boolean))).sort();
   var weeks=Array.from(new Set(lots.map(function(l){return l.week;}).filter(Boolean))).sort();
   var bottleSizes=Array.from(new Set(allRows.map(function(r){return r['Bottle Size'];}).filter(Boolean))).sort();
   var jarSizes=Array.from(new Set(allRows.map(function(r){return r['Jar Size'];}).filter(Boolean))).sort();
+
   document.getElementById('content').innerHTML=
-    '<div class="filters"><input type="text" id="fSearch" placeholder="Search lot # or product\u2026" style="min-width:180px" oninput="applyFilters()"><select id="fProduct" onchange="applyFilters()"><option value="">All products</option>'+products.map(function(p){return '<option>'+p+'</option>';}).join('')+'</select><select id="fStatus" onchange="applyFilters()"><option value="">All statuses</option><option>Complete</option><option>Partial</option></select><select id="fWeek" onchange="applyFilters()"><option value="">All weeks</option>'+weeks.map(function(w){return '<option>'+w+'</option>';}).join('')+'</select><select id="fBottle" onchange="applyFilters()"><option value="">All bottle sizes</option>'+bottleSizes.map(function(s){return '<option>'+s+'</option>';}).join('')+'</select><select id="fJar" onchange="applyFilters()"><option value="">All jar sizes</option>'+jarSizes.map(function(s){return '<option>'+s+'</option>';}).join('')+'</select><button onclick="clearFilters()" style="font-size:12px;padding:6px 12px;border:0.5px solid #444441;border-radius:8px;background:transparent;cursor:pointer;color:#888780">Clear</button></div>'
+    '<div style="font-size:12px;font-weight:500;color:#888780;margin-bottom:12px;padding:.5rem 1rem;background:#1e2124;border:0.5px solid #2c2c2a;border-radius:8px;display:inline-block;">'+scopeLabel+'</div>'
+    +'<div class="filters"><input type="text" id="fSearch" placeholder="Search lot # or product\u2026" style="min-width:180px" oninput="applyFilters()"><select id="fProduct" onchange="applyFilters()"><option value="">All products</option>'+products.map(function(p){return '<option>'+p+'</option>';}).join('')+'</select><select id="fStatus" onchange="applyFilters()"><option value="">All statuses</option><option>Complete</option><option>Partial</option></select><select id="fWeek" onchange="applyFilters()"><option value="">All weeks</option>'+weeks.map(function(w){return '<option>'+w+'</option>';}).join('')+'</select><select id="fBottle" onchange="applyFilters()"><option value="">All bottle sizes</option>'+bottleSizes.map(function(s){return '<option>'+s+'</option>';}).join('')+'</select><select id="fJar" onchange="applyFilters()"><option value="">All jar sizes</option>'+jarSizes.map(function(s){return '<option>'+s+'</option>';}).join('')+'</select><button onclick="clearFilters()" style="font-size:12px;padding:6px 12px;border:0.5px solid #444441;border-radius:8px;background:transparent;cursor:pointer;color:#888780">Clear</button></div>'
     +'<div id="ops-metrics" class="metrics" style="margin-bottom:1rem"></div>'
     +'<div class="full-card"><div class="tbl-wrap"><table style="min-width:600px"><thead><tr><th onclick="sortBy(\'date\')">Date \u21d5</th><th onclick="sortBy(\'lot\')">Lot # \u21d5</th><th onclick="sortBy(\'product\')">Product \u21d5</th><th onclick="sortBy(\'line\')">Line \u21d5</th><th onclick="sortBy(\'bottleSize\')">Bottle \u21d5</th><th onclick="sortBy(\'jarSize\')">Jar \u21d5</th><th onclick="sortBy(\'projected\')">Projected \u21d5</th><th onclick="sortBy(\'finalUnits\')">Final units \u21d5</th><th onclick="sortBy(\'dev\')">Dev % \u21d5</th><th onclick="sortBy(\'status\')">Status \u21d5</th></tr></thead><tbody id="ops-body"></tbody></table></div><div class="pagination"><button id="prevBtn" onclick="changePage(-1)">\u2190 Prev</button><span id="pageInfo"></span><button id="nextBtn" onclick="changePage(1)">Next \u2192</button><span id="rowCount" style="margin-left:auto"></span></div></div>';
+
+  window._detailFilteredKeys = filteredLotKeys;
   applyFilters();
 }
 
@@ -1488,7 +1524,9 @@ function getFilteredLots(){
   var week=document.getElementById('fWeek')?document.getElementById('fWeek').value:'';
   var bottle=document.getElementById('fBottle')?document.getElementById('fBottle').value:'';
   var jar=document.getElementById('fJar')?document.getElementById('fJar').value:'';
+  var scopeKeys = window._detailFilteredKeys || null;
   return Object.values(lotMap).filter(Boolean).filter(function(l){
+    if(scopeKeys && !scopeKeys.has(l.lot)) return false;
     if(search&&!(l.lot.toLowerCase().includes(search)||l.product.toLowerCase().includes(search)))return false;
     if(prod&&l.product!==prod)return false;
     if(status&&!l.status.toLowerCase().includes(status.toLowerCase()))return false;
