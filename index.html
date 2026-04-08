@@ -230,7 +230,7 @@ function parseTargets(text) {
   } catch(e) { return {}; }
 }
 
-function buildProductionDays() {
+function buildProductionDays(preserveSelection) {
   var now = new Date();
   var todayStr = (now.getMonth()+1)+'/'+now.getDate()+'/'+now.getFullYear();
   var seen = new Set();
@@ -241,8 +241,14 @@ function buildProductionDays() {
   });
   var days = Array.from(seen).sort(function(a,b){ return new Date(a)-new Date(b); });
   if (!seen.has(todayStr)) days.push(todayStr);
+  var currentlyViewingStr = productionDays[selectedDayIdx];
   productionDays = days;
-  selectedDayIdx = days.length - 1;
+  if (preserveSelection && currentlyViewingStr) {
+    var idx = days.indexOf(currentlyViewingStr);
+    selectedDayIdx = idx !== -1 ? idx : days.length - 1;
+  } else {
+    selectedDayIdx = days.length - 1;
+  }
 }
 
 function loadDashboard() {
@@ -251,7 +257,7 @@ function loadDashboard() {
     allRows25 = parseCSV(results[1]).filter(isValid);
     dailyTargets = parseTargets(results[2]);
     lotMap = buildLotMap(allRows);
-    buildProductionDays();
+    buildProductionDays(false); // first load always lands on today
     lastRefreshTime = Date.now();
     document.getElementById('loading').style.display = 'none';
     document.getElementById('content').style.display = 'block';
@@ -285,16 +291,13 @@ function fetchData() {
 }
 
 function applyFreshData(res) {
-  // Parse everything into locals first — only swap globals once all data is ready
   var newRows   = parseCSV(res[0]).filter(isValid);
   var newRows25  = parseCSV(res[1]).filter(isValid);
   var newTargets = parseTargets(res[2]);
-  // Validate: if the primary sheet came back nearly empty, something went wrong — abort
   if (newRows.length < 3) { console.warn('Refresh aborted: suspiciously few rows returned'); return false; }
   var newLotMap  = buildLotMap(newRows);
-  // Atomic swap
   allRows = newRows; allRows25 = newRows25; dailyTargets = newTargets; lotMap = newLotMap;
-  buildProductionDays();
+  buildProductionDays(true); // preserve selected day on background refreshes
   return true;
 }
 
@@ -536,7 +539,7 @@ function applyHitStates(gaugeData, todayTotal, totalGoal, statusLabel, statusCol
     if(card) {
       if(hit) {
         card.style.border = '2.5px solid #1D9E75';
-        card.style.boxShadow = '0 0 8px 1px rgba(29,158,117,0.2)';
+        card.style.boxShadow = '0 0 10px 2px rgba(29,158,117,0.28), 0 0 20px 4px rgba(29,158,117,0.10)';
       } else {
         card.style.border = '0.5px solid #2c2c2a';
         card.style.boxShadow = 'none';
