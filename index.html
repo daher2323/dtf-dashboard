@@ -1040,6 +1040,11 @@ function renderWeekly() {
   });
 }
 
+function getDefaultDetailRange() {
+  var now = new Date();
+  return {start: new Date(now.getFullYear(),0,1), end: now, label: 'YTD '+now.getFullYear()};
+}
+
 function renderDetail() {
   var now = new Date();
   var navHTML = '';
