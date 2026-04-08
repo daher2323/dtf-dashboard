@@ -63,9 +63,15 @@
 
 <div id="login-screen" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#141618;">
   <div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:16px;padding:2.5rem 2rem;width:100%;max-width:360px;text-align:center">
-    <img src="DTF_Logo.png" alt="DTF" onerror="this.style.display='none'" style="height:54px;width:auto;background:#fff;border-radius:8px;padding:4px 8px;margin-bottom:1.5rem">
+    <div style="display:inline-block;position:relative;padding:10px 20px;margin-bottom:1.5rem;">
+      <div style="position:absolute;top:0;left:0;width:14px;height:14px;border-top:2px solid #378ADD;border-left:2px solid #378ADD;"></div>
+      <div style="position:absolute;top:0;right:0;width:14px;height:14px;border-top:2px solid #378ADD;border-right:2px solid #378ADD;"></div>
+      <div style="position:absolute;bottom:0;left:0;width:14px;height:14px;border-bottom:2px solid #378ADD;border-left:2px solid #378ADD;"></div>
+      <div style="position:absolute;bottom:0;right:0;width:14px;height:14px;border-bottom:2px solid #378ADD;border-right:2px solid #378ADD;"></div>
+      <svg width="52" height="40" viewBox="0 0 52 40"><text x="2" y="32" font-size="30" font-weight="700" fill="#378ADD" font-family="system-ui,sans-serif" letter-spacing="-1">DTF</text></svg>
+    </div>
     <div style="font-size:18px;font-weight:500;color:#e8e6e0;margin-bottom:4px">Dynamic Technical Formulations</div>
-    <div style="font-size:13px;color:#888780;margin-bottom:2rem">Operations View</div>
+    <div style="font-size:13px;color:#888780;margin-bottom:2rem">Production Hub</div>
     <input id="pw-input" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')checkPw()" style="width:100%;padding:10px 14px;border:0.5px solid #444441;border-radius:8px;background:#141618;color:#e8e6e0;font-size:14px;margin-bottom:10px;outline:none;display:block">
     <button onclick="checkPw()" style="width:100%;padding:10px;background:#378ADD;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer">Sign in</button>
     <div id="pw-error" style="color:#F09595;font-size:12px;margin-top:10px;display:none">Incorrect password. Please try again.</div>
@@ -76,10 +82,18 @@
 <div class="shell">
   <div class="top-bar">
     <div class="brand">
-      <img src="DTF_Logo.png" alt="DTF Logo" onerror="this.style.display='none'">
-      <div>
-        <div class="brand-name">Dynamic Technical Formulations</div>
-        <div class="brand-sub">Operations View</div>
+      <div style="display:inline-block;position:relative;padding:10px 18px;">
+        <div style="position:absolute;top:0;left:0;width:16px;height:16px;border-top:2px solid #378ADD;border-left:2px solid #378ADD;"></div>
+        <div style="position:absolute;top:0;right:0;width:16px;height:16px;border-top:2px solid #378ADD;border-right:2px solid #378ADD;"></div>
+        <div style="position:absolute;bottom:0;left:0;width:16px;height:16px;border-bottom:2px solid #378ADD;border-left:2px solid #378ADD;"></div>
+        <div style="position:absolute;bottom:0;right:0;width:16px;height:16px;border-bottom:2px solid #378ADD;border-right:2px solid #378ADD;"></div>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <svg width="52" height="40" viewBox="0 0 52 40" style="flex-shrink:0"><text x="2" y="32" font-size="30" font-weight="700" fill="#378ADD" font-family="system-ui,sans-serif" letter-spacing="-1">DTF</text></svg>
+          <div>
+            <div class="brand-name">Dynamic Technical Formulations</div>
+            <div class="brand-sub">Production Hub</div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="nav-area">
