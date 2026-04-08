@@ -1087,29 +1087,23 @@ function renderDetail() {
       +'</div></div>';
 
   } else {
-    // Trend — year + quarter selector
-    var availYears = Array.from(new Set(allRows.concat(allRows25).map(function(r){ var dt=new Date(r['Date']); return isNaN(dt)?null:dt.getFullYear(); }).filter(Boolean))).sort();
-    var quarters = ['ytd','Q1','Q2','Q3','Q4'];
-    var qLabels = {ytd:'YTD', Q1:'Q1 (Jan\u2013Mar)', Q2:'Q2 (Apr\u2013Jun)', Q3:'Q3 (Jul\u2013Sep)', Q4:'Q4 (Oct\u2013Dec)'};
-    var yr = selectedDetailYear;
-    var qRanges = {
-      ytd: [new Date(yr,0,1), now.getFullYear()===yr?now:new Date(yr,11,31,23,59,59)],
-      Q1:  [new Date(yr,0,1), new Date(yr,2,31,23,59,59)],
-      Q2:  [new Date(yr,3,1), new Date(yr,5,30,23,59,59)],
-      Q3:  [new Date(yr,6,1), new Date(yr,8,30,23,59,59)],
-      Q4:  [new Date(yr,9,1), new Date(yr,11,31,23,59,59)]
-    };
-    var range = qRanges[selectedDetailQuarter];
-    var baseRows = yr===2025 ? allRows25 : allRows;
-    sourceRows = baseRows.filter(function(r){ var dt=new Date(r['Date']); return !isNaN(dt)&&dt>=range[0]&&dt<=range[1]; });
-    navHTML = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">'
-      +'<div style="display:flex;gap:2px;padding:3px;background:#1e2124;border:0.5px solid #2c2c2a;border-radius:8px;">'
-      +availYears.map(function(y){ var a=y===selectedDetailYear; return '<button onclick="setDetailYear('+y+')" style="padding:5px 14px;border-radius:6px;border:'+(a?'1.5px solid #378ADD':'1.5px solid transparent')+';background:'+(a?'#0C447C':'transparent')+';color:'+(a?'#85B7EB':'#888780')+';font-size:12px;font-weight:'+(a?'500':'400')+';cursor:pointer;font-family:system-ui;">'+y+'</button>'; }).join('')
+    // Trend — dynamic date range picker
+    if(!selectedDetailRange) selectedDetailRange = getDefaultDetailRange();
+    var range = selectedDetailRange;
+    var now2 = new Date();
+    var fmtShort = function(d){ return (d.getMonth()+1)+'/'+d.getDate()+'/'+d.getFullYear(); };
+    var displayLabel = range.label || (fmtShort(range.start)+' \u2013 '+fmtShort(range.end));
+    var baseRows = allRows.concat(allRows25);
+    sourceRows = baseRows.filter(function(r){
+      var dt=new Date(r['Date']); if(isNaN(dt)) return false;
+      return dt>=range.start && dt<=range.end;
+    });
+    navHTML = '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-bottom:12px;position:relative;" id="detail-range-anchor">'
+      +'<div onclick="openDetailRangePicker()" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;padding:6px 14px;border-radius:8px;border:0.5px solid #444441;background:transparent;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'transparent\'">'
+      +'<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1" y="2" width="11" height="10" rx="2" stroke="#888780" stroke-width="1.2"/><line x1="4" y1="1" x2="4" y2="4" stroke="#888780" stroke-width="1.2" stroke-linecap="round"/><line x1="9" y1="1" x2="9" y2="4" stroke="#888780" stroke-width="1.2" stroke-linecap="round"/><line x1="1" y1="6" x2="12" y2="6" stroke="#888780" stroke-width="1.2"/></svg>'
+      +'<span style="font-size:13px;font-weight:500;color:#e8e6e0;white-space:nowrap;">'+displayLabel+' &#x25BE;</span>'
       +'</div>'
-      +'<div style="width:0.5px;height:28px;background:#2c2c2a;flex-shrink:0;"></div>'
-      +'<div style="display:flex;gap:2px;padding:3px;background:#1e2124;border:0.5px solid #2c2c2a;border-radius:8px;">'
-      +quarters.map(function(q){ var a=q===selectedDetailQuarter; return '<button onclick="setDetailQuarter(\''+q+'\')" style="padding:5px 14px;border-radius:6px;border:'+(a?'1.5px solid #378ADD':'1.5px solid transparent')+';background:'+(a?'#0C447C':'transparent')+';color:'+(a?'#85B7EB':'#888780')+';font-size:12px;font-weight:'+(a?'500':'400')+';cursor:pointer;font-family:system-ui;">'+qLabels[q]+'</button>'; }).join('')
-      +'</div></div>';
+      +'</div>';
   }
 
   // Build scoped lot map from only the filtered source rows — units are scoped correctly
