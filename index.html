@@ -1424,9 +1424,15 @@ function renderPerformance() {
   var custHTML=top10.map(function(e,i){var c=e[0],cd=e[1],avg2=cd.lots?Math.round(cd.units/cd.lots):0,bw=Math.round((cd.units/maxCU)*100),sp=totalUnits?((cd.units/totalUnits)*100).toFixed(1):0;return '<tr><td style="color:#5f5e5a;font-size:11px;width:24px">'+(i+1)+'</td><td style="font-weight:500">'+c+'</td><td style="text-align:right">'+cd.units.toLocaleString()+'</td><td style="padding:6px 10px;width:90px"><div style="background:#2c2c2a;border-radius:2px;height:4px;overflow:hidden"><div style="height:100%;width:'+bw+'%;background:#94A3B8;border-radius:2px"></div></div></td><td style="text-align:right;color:#888780">'+cd.lots+'</td><td style="text-align:right;color:#888780">'+avg2.toLocaleString()+'</td><td style="text-align:right;color:#888780">'+sp+'%</td></tr>';}).join('');
 
   document.getElementById('content').innerHTML=
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">'
-    +'<div style="font-size:12px;color:#888780;">2026 &nbsp;&middot;&nbsp; Year-to-date through '+now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})+' &nbsp;&middot;&nbsp; Day '+dayOfYear+' of 365</div>'
-    +'<div style="font-size:11px;color:#5f5e5a;">Comparisons shown vs. same period in 2025</div>'
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:.625rem 1rem;background:#1e2124;border:0.5px solid #2c2c2a;border-radius:10px;flex-wrap:wrap;gap:8px;">'
+    +'<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">'
+    +'<span style="font-size:12px;font-weight:500;color:#e8e6e0;">2026 Year-to-Date</span>'
+    +'<span style="width:0.5px;height:14px;background:#2c2c2a;flex-shrink:0;display:inline-block;"></span>'
+    +'<span style="font-size:12px;color:#888780;">Through '+now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})+'</span>'
+    +'<span style="width:0.5px;height:14px;background:#2c2c2a;flex-shrink:0;display:inline-block;"></span>'
+    +'<span style="font-size:12px;color:#888780;">Day '+dayOfYear+' of 365</span>'
+    +'</div>'
+    +'<div style="font-size:11px;color:#5f5e5a;">Comparisons vs. same period in 2025</div>'
     +'</div>'
     +'<div class="metrics">'+metricsHTML+'</div>'
     +'<div class="full-card"><h3>Year-end projection vs target</h3>'+yearEndHTML+'</div>'
