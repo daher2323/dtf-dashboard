@@ -612,26 +612,40 @@ function renderToday() {
   var runningByLine={'Line #1':[],'Line #2':[],'Line #4':[]};
   var completedToday=[];
   var seenLots=new Set();
+
+  // build per-day units for each lot
   var todayUnitsByLot={};
   allRows.forEach(function(r){
     if(!matchDate(r['Date'])) return;
     var lot=(r['Lot Number']||'').trim(); if(!lot) return;
     todayUnitsByLot[lot]=(todayUnitsByLot[lot]||0)+num(r['Final Units']);
   });
+
+  // build running total up to and including viewDate for each lot
+  var viewDateObj2=new Date(viewStr);
+  var runningTotalByLot={};
+  allRows.forEach(function(r){
+    var dt=new Date(r['Date']); if(isNaN(dt)) return;
+    if(dt>viewDateObj2) return;
+    var lot=(r['Lot Number']||'').trim(); if(!lot) return;
+    runningTotalByLot[lot]=(runningTotalByLot[lot]||0)+num(r['Final Units']);
+  });
+
   allRows.forEach(function(r){
     if(!matchDate(r['Date'])) return;
     var lot=(r['Lot Number']||'').trim(); if(!lot||seenLots.has(lot)) return; seenLots.add(lot);
     var lotData=lotMap[lot];
     var product=lotData?lotData.product:(r['Product']||'');
     var projected=lotData?lotData.projected:num(r['Projected Units']);
-    var finalUnits=lotData?lotData.finalUnits:num(r['Final Units']);
-    var status=lotData?lotData.status:(r['Complete or Partial']||'');
     var line=(r['Line']||'').trim();
     var startTime=(r['Start Time']||'').trim();
+    // use this day's row status directly — not the aggregated lot status
+    var todayStatus=(r['Complete or Partial']||'').trim();
     var todayUnits=todayUnitsByLot[lot]||0;
-    var st=status.toLowerCase();
+    var runningTotal=runningTotalByLot[lot]||0;
+    var st=todayStatus.toLowerCase();
     if(st.includes('complete')||st.includes('partial')){
-      completedToday.push({product:product,projected:projected,finalUnits:finalUnits,todayUnits:todayUnits,status:status,line:line});
+      completedToday.push({product:product,projected:projected,finalUnits:runningTotal,todayUnits:todayUnits,status:todayStatus,line:line});
     } else {
       if(!runningByLine[line]) runningByLine[line]=[];
       runningByLine[line].push({product:product,projected:projected,startTime:startTime});
