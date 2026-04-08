@@ -524,13 +524,18 @@ function setDetailRange(start, end, label) {
 }
 
 function applyDetailShortcut(s) {
-  var yr = selectedDetailYear, now = new Date();
-  if(s==='YTD')         setDetailRange(new Date(yr,0,1), yr===now.getFullYear()?now:new Date(yr,11,31,23,59,59), 'YTD '+yr);
-  else if(s==='Q1')     setDetailRange(new Date(yr,0,1),  new Date(yr,2,31,23,59,59),  'Q1 '+yr);
-  else if(s==='Q2')     setDetailRange(new Date(yr,3,1),  new Date(yr,5,30,23,59,59),  'Q2 '+yr);
-  else if(s==='Q3')     setDetailRange(new Date(yr,6,1),  new Date(yr,8,30,23,59,59),  'Q3 '+yr);
-  else if(s==='Q4')     setDetailRange(new Date(yr,9,1),  new Date(yr,11,31,23,59,59), 'Q4 '+yr);
-  else if(s==='Full')   setDetailRange(new Date(yr,0,1),  new Date(yr,11,31,23,59,59), 'Full year '+yr);
+  applyDetailShortcutForYear(s, selectedDetailYear);
+}
+
+function applyDetailShortcutForYear(s, yr) {
+  var now = new Date();
+  var cap = function(d){ return d > now ? now : d; };
+  if(s==='YTD')       setDetailRange(new Date(yr,0,1),  cap(new Date(yr,11,31,23,59,59)), 'YTD '+yr+' (year to date)');
+  else if(s==='Q1')   setDetailRange(new Date(yr,0,1),  cap(new Date(yr,2,31,23,59,59)),  'Q1 '+yr);
+  else if(s==='Q2')   setDetailRange(new Date(yr,3,1),  cap(new Date(yr,5,30,23,59,59)),  'Q2 '+yr);
+  else if(s==='Q3')   setDetailRange(new Date(yr,6,1),  cap(new Date(yr,8,30,23,59,59)),  'Q3 '+yr);
+  else if(s==='Q4')   setDetailRange(new Date(yr,9,1),  cap(new Date(yr,11,31,23,59,59)), 'Q4 '+yr);
+  else if(s==='Full') setDetailRange(new Date(yr,0,1),  cap(new Date(yr,11,31,23,59,59)), 'Full year '+yr);
 }
 
 function applyDetailCustomRange() {
@@ -549,34 +554,91 @@ function refreshDetailRangePicker() { closeDetailRangePicker(); setTimeout(openD
 function openDetailRangePicker() {
   if(document.getElementById('detail-range-picker')){ closeDetailRangePicker(); return; }
   var now = new Date();
-  var yr = selectedDetailYear;
   var range = selectedDetailRange || getDefaultDetailRange();
+
+  // Build all years that have data, most recent first
   var availYears = Array.from(new Set(
     allRows.concat(allRows25).map(function(r){ var dt=new Date(r['Date']); return isNaN(dt)?null:dt.getFullYear(); }).filter(Boolean)
-  )).sort();
+  )).sort().reverse();
+
+  // Quarter definitions: [label, startMonth(0-based), endMonth, endDay]
+  var quarters = [
+    {key:'Q1', label:'Q1', start:[0,1],  end:[2,31]},
+    {key:'Q2', label:'Q2', start:[3,1],  end:[5,30]},
+    {key:'Q3', label:'Q3', start:[6,1],  end:[8,30]},
+    {key:'Q4', label:'Q4', start:[9,1],  end:[11,31]}
+  ];
+
+  function isStarted(yr, startMonthIdx, startDay) {
+    // Returns true if the quarter's start date is on or before today
+    var qStart = new Date(yr, startMonthIdx, startDay);
+    return qStart <= now;
+  }
+
+  function fmtDate(d) {
+    return d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+  }
+
+  function rowHTML(label, hint, shortcut, yr, isActive) {
+    var activeStyle = isActive
+      ? 'background:#061d35;color:#85B7EB;'
+      : 'background:transparent;color:#e8e6e0;';
+    var hintColor = isActive ? '#378ADD' : '#5f5e5a';
+    return '<div onclick="applyDetailShortcutForYear(\''+shortcut+'\','+yr+')" '
+      +'style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:8px;cursor:pointer;'+activeStyle+'"'
+      +' onmouseover="if(this.style.background===\'transparent\')this.style.background=\'#252829\'"'
+      +' onmouseout="if(this.style.background===\'#252829\')this.style.background=\'transparent\'">'
+      +'<span style="font-size:13px;">'+label+'</span>'
+      +'<span style="font-size:11px;color:'+hintColor+';">'+hint+'</span>'
+      +'</div>';
+  }
+
+  var sectionsHTML = '';
+  availYears.forEach(function(yr) {
+    var isCurrentYear = (yr === now.getFullYear());
+    var rows = '';
+
+    // YTD — only for current year
+    if(isCurrentYear) {
+      var ytdLbl = 'YTD '+yr+' (year to date)';
+      rows += rowHTML('Year to date', 'Jan 1 – today', 'YTD', yr, range.label===ytdLbl);
+    }
+
+    // Quarters — only show if the quarter has started
+    quarters.forEach(function(q) {
+      if(!isStarted(yr, q.start[0], q.start[1])) return;
+      var qStart = new Date(yr, q.start[0], q.start[1]);
+      var qEnd   = new Date(yr, q.end[0],   q.end[1]);
+      // For current year cap Q end at today if it's the in-progress quarter
+      var qEndDisplay = (isCurrentYear && qEnd > now) ? now : qEnd;
+      var hint = fmtDate(qStart) + ' – ' + fmtDate(qEndDisplay);
+      var lbl = q.key+' '+yr;
+      rows += rowHTML(q.key+' '+yr, hint, q.key, yr, range.label===lbl);
+    });
+
+    // Full year — only show for past years, or current year if Q4 has started
+    var q4Started = isStarted(yr, 9, 1);
+    if(!isCurrentYear || q4Started) {
+      var fyStart = new Date(yr,0,1), fyEnd = new Date(yr,11,31);
+      var fyEndDisplay = (isCurrentYear && fyEnd > now) ? now : fyEnd;
+      var fyLbl = 'Full year '+yr;
+      rows += rowHTML('Full year '+yr, fmtDate(fyStart)+' – '+fmtDate(fyEndDisplay), 'Full', yr, range.label===fyLbl);
+    }
+
+    if(!rows) return;
+    sectionsHTML +=
+      '<div style="font-size:10px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;padding:6px 10px 3px;">'+yr+'</div>'
+      + rows;
+  });
 
   var html =
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
-    +'<span style="font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;">Select date range</span>'
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+    +'<span style="font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;">Date range</span>'
     +'<button onclick="closeDetailRangePicker()" style="background:transparent;border:none;color:#888780;cursor:pointer;font-size:16px;line-height:1;padding:0;">&#x2715;</button>'
     +'</div>'
-    +'<div style="margin-bottom:12px;"><div style="font-size:10px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Year</div>'
-    +'<div style="display:flex;gap:4px;">'
-    + availYears.map(function(y){
-        var active = y===yr;
-        return '<button onclick="selectedDetailYear='+y+';refreshDetailRangePicker()" style="padding:4px 14px;border-radius:6px;border:'+(active?'1.5px solid #378ADD':'1.5px solid #444441')+';background:'+(active?'#0C447C':'transparent')+';color:'+(active?'#85B7EB':'#888780')+';font-size:12px;font-weight:'+(active?'500':'400')+';cursor:pointer;font-family:system-ui;">'+y+'</button>';
-      }).join('')
-    +'</div></div>'
-    +'<div style="margin-bottom:14px;"><div style="font-size:10px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Quick select <span style="color:#444441;font-weight:400;text-transform:none;letter-spacing:0;">&mdash; applies immediately</span></div>'
-    +'<div style="display:flex;gap:4px;flex-wrap:wrap;">'
-    + ['YTD','Q1','Q2','Q3','Q4','Full'].map(function(s){
-        var lbl = s==='YTD'?'YTD '+yr : s==='Full'?'Full year '+yr : s+' '+yr;
-        var active = range.label===lbl;
-        return '<button onclick="applyDetailShortcut(\''+s+'\')" style="padding:5px 14px;border-radius:6px;border:'+(active?'1.5px solid #378ADD':'1.5px solid #444441')+';background:'+(active?'#0C447C':'transparent')+';color:'+(active?'#85B7EB':'#e8e6e0')+';font-size:12px;font-weight:'+(active?'500':'400')+';cursor:pointer;font-family:system-ui;">'+s+'</button>';
-      }).join('')
-    +'</div></div>'
-    +'<div style="border-top:0.5px solid #2c2c2a;padding-top:12px;">'
-    +'<div style="font-size:10px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Custom range <span style="color:#444441;font-weight:400;text-transform:none;letter-spacing:0;">&mdash; click Apply to confirm</span></div>'
+    + sectionsHTML
+    +'<div style="border-top:0.5px solid #2c2c2a;padding-top:10px;margin-top:8px;">'
+    +'<div style="font-size:10px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;">Custom range</div>'
     +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
     +'<input type="date" id="detail-range-start" value="'+toInputDate(range.start)+'" style="padding:5px 8px;border:0.5px solid #444441;border-radius:6px;background:#141618;color:#e8e6e0;font-size:12px;">'
     +'<span style="color:#5f5e5a;font-size:12px;">to</span>'
@@ -586,13 +648,11 @@ function openDetailRangePicker() {
 
   var picker = document.createElement('div');
   picker.id = 'detail-range-picker';
-  picker.style.cssText = 'position:absolute;z-index:1000;background:#1e2124;border:0.5px solid #444441;border-radius:12px;padding:1rem;min-width:340px;left:0;top:44px;';
+  picker.style.cssText = 'position:absolute;z-index:1000;background:#1e2124;border:0.5px solid #444441;border-radius:12px;padding:1rem;min-width:360px;max-height:480px;overflow-y:auto;left:0;top:44px;';
   picker.innerHTML = html;
   picker.addEventListener('click', function(e){ e.stopPropagation(); });
   var anchor = document.getElementById('detail-range-anchor');
   if(anchor) anchor.appendChild(picker);
-  // Use mousedown on document so click events on the picker itself are already stopped
-  // before this fires, eliminating the timing gap that caused the ~5s re-open delay.
   function outsideHandler(e) {
     if(!document.getElementById('detail-range-picker')) { document.removeEventListener('mousedown', outsideHandler); return; }
     closeDetailRangePicker();
