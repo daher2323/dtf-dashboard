@@ -814,14 +814,15 @@ function renderToday() {
                         +'<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:10px;background:'+statusBg+';color:'+statusTxt+'">Partial</span>'
                         +'</div>'
                         +'<div style="font-size:11px;color:#888780;margin-bottom:6px;">'+product+'</div>'
-                        +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
-                        +'<div><span style="font-size:12px;font-weight:500;color:#e8e6e0;">'+l.todayUnits.toLocaleString()+'</span><span style="font-size:10px;color:#5f5e5a;"> today</span></div>'
-                        +'<div style="text-align:right;">'
-                        +'<div style="font-size:11px;color:#888780;margin-bottom:3px;">'+l.finalUnits.toLocaleString()+' <span style="color:#5f5e5a">/ '+(l.projected?l.projected.toLocaleString():'—')+' proj</span></div>'
-                        +'<div style="height:3px;background:#2c2c2a;border-radius:2px;width:80px;margin-left:auto;">'
+                        +'<div style="display:flex;align-items:center;justify-content:space-between;">'
+                        +'<div>'
+                        +'<span style="font-size:11px;color:#888780;">'+l.finalUnits.toLocaleString()+' <span style="color:#5f5e5a;">/ '+(l.projected?l.projected.toLocaleString():'—')+' proj</span>'
+                        +(l.todayUnits!==l.finalUnits?' <span style="color:#5f5e5a;font-size:10px;">('+l.todayUnits.toLocaleString()+' today)</span>':'')
+                        +'</span>'
+                        +'<div style="height:3px;background:#2c2c2a;border-radius:2px;width:80px;margin-top:4px;">'
                         +'<div style="height:100%;width:'+runPct+'%;background:#EF9F27;border-radius:2px;"></div>'
-                        +'</div></div>'
-                        +'<span style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:6px;background:'+devBg+';color:'+devTxt+';">'+devS+'</span>'
+                        +'</div>'
+                        +'</div>'
                         +'</div></div>';
                     }
                     return '<div style="padding:8px 10px;border-bottom:0.5px solid #2c2c2a;">'
