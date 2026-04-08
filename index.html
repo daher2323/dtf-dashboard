@@ -817,7 +817,7 @@ function renderToday() {
                         +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
                         +'<div><span style="font-size:12px;font-weight:500;color:#e8e6e0;">'+l.todayUnits.toLocaleString()+'</span><span style="font-size:10px;color:#5f5e5a;"> today</span></div>'
                         +'<div style="text-align:right;">'
-                        +'<div style="font-size:11px;color:#888780;margin-bottom:3px;">'+l.finalUnits.toLocaleString()+' of '+(l.projected?l.projected.toLocaleString():'—')+' proj</div>'
+                        +'<div style="font-size:11px;color:#888780;margin-bottom:3px;">'+l.finalUnits.toLocaleString()+' <span style="color:#5f5e5a">/ '+(l.projected?l.projected.toLocaleString():'—')+' proj</span></div>'
                         +'<div style="height:3px;background:#2c2c2a;border-radius:2px;width:80px;margin-left:auto;">'
                         +'<div style="height:100%;width:'+runPct+'%;background:#EF9F27;border-radius:2px;"></div>'
                         +'</div></div>'
@@ -825,7 +825,10 @@ function renderToday() {
                         +'</div></div>';
                     }
                     return '<div style="padding:8px 10px;border-bottom:0.5px solid #2c2c2a;">'
-                      +'<div style="font-size:11px;font-weight:500;color:#e8e6e0;margin-bottom:1px">'+brand+'</div>'
+                      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">'
+                      +'<div style="font-size:11px;font-weight:500;color:#e8e6e0;">'+brand+'</div>'
+                      +'<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:10px;background:#0F6E56;color:#9FE1CB;">Complete</span>'
+                      +'</div>'
                       +'<div style="font-size:11px;color:#888780;margin-bottom:5px">'+product+'</div>'
                       +'<div style="display:flex;align-items:center;justify-content:space-between;">'
                       +'<span style="font-size:11px;color:#888780">'+l.finalUnits.toLocaleString()+' <span style="color:#5f5e5a">/ '+(l.projected?l.projected.toLocaleString():'—')+' proj</span></span>'
