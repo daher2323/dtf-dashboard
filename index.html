@@ -988,17 +988,23 @@ function renderWeekly() {
   var liveMon = getCurrentWeekMon();
   var isLiveWeek = selectedWeekMon.toDateString() === liveMon.toDateString();
 
+  // combine both years up front
+  var allRowsCombined = allRows.concat(allRows25);
+
   // for historical weeks, use end of that Friday as the cutoff
   var wkMon = selectedWeekMon;
   var wkFri = new Date(wkMon); wkFri.setDate(wkMon.getDate()+4); wkFri.setHours(23,59,59,999);
   var wkEnd = isLiveWeek ? now : wkFri;
-  var wk = getWeekDates(isLiveWeek ? now : new Date(wkMon.getTime()+3*86400000)); // midweek to get correct dates
+  var wk = getWeekDates(isLiveWeek ? now : new Date(wkMon.getTime()+3*86400000));
   wk.mon = wkMon;
   wk.fri = new Date(wkMon); wk.fri.setDate(wkMon.getDate()+4);
   wk.dates = [];
   for(var i=0;i<5;i++){ var dd=new Date(wkMon); dd.setDate(wkMon.getDate()+i); wk.dates.push(dd); }
 
   var weekNum = getWeekNum(wkMon);
+
+  var lastMon = new Date(wkMon); lastMon.setDate(wkMon.getDate()-7);
+  var lastFri = new Date(lastMon); lastFri.setDate(lastMon.getDate()+4); lastFri.setHours(23,59,59,999);
 
   // weekly units from allRows
   var weekRows = allRows.filter(function(r){
