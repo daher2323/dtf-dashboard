@@ -710,8 +710,11 @@ function renderToday() {
   var gaugesHTML=ALL_LINES.map(function(line,i){
     var k2=lk(line),color=LINE_COLOR[k2]||'#888780',bg=LINE_BG[k2]||'#2c2c2a',txt=LINE_TXT[k2]||'#e8e6e0',type=LINE_TYPE[k2]||'';
     var goal=lineGoal(line);
-    var pillColor=goal.isTarget?'background:#1a2a3a;border:0.5px solid #1D6FA8;color:#85B7EB':'background:#1a1f12;border:0.5px solid #3B5010;color:#C0DD97';
-    var pillDot=goal.isTarget?'background:#378ADD':'background:#639922';
+    var lineClr=LINE_COLOR[k2]||'#378ADD';
+    var lineBg=LINE_BG[k2]||'#0C447C';
+    var lineTxt=LINE_TXT[k2]||'#85B7EB';
+    var pillColor=goal.isTarget?'background:'+lineBg+';border:0.5px solid '+lineClr+';color:'+lineTxt:'background:#1a1f12;border:0.5px solid #3B5010;color:#C0DD97';
+    var pillDot=goal.isTarget?'background:'+lineClr:'background:#639922';
     var pillLabel=goal.isTarget?'Target: '+goal.value.toLocaleString()+' units':'Avg: '+(lineAvg[line]||0).toLocaleString()+' units/day';
     var warningIcon='<svg width="10" height="10" viewBox="0 0 10 10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="none" stroke="#EF9F27" stroke-width="1.2"/><line x1="5" y1="2.8" x2="5" y2="5.5" stroke="#EF9F27" stroke-width="1.2" stroke-linecap="round"/><circle cx="5" cy="7.2" r="0.7" fill="#EF9F27"/></svg>';
     return '<div id="gcard_'+i+'" style="flex:1;background:#141618;border:0.5px solid #2c2c2a;border-radius:10px;padding:1rem;text-align:center;position:relative;transition:border .3s,box-shadow .3s;">'
