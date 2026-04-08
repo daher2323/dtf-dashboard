@@ -134,12 +134,6 @@ function checkPw() {
   }
 }
 
-if (sessionStorage.getItem('dtf_auth') === '1') {
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('main-app').style.display = 'block';
-  loadDashboard();
-}
-
 function parseCSV(text) {
   var clean = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
   var lines = clean.trim().split('\n');
@@ -512,6 +506,105 @@ function closeWeekPicker() {
   if(p) p.remove();
 }
 
+// ─── Detail range picker ──────────────────────────────────────────────────
+
+function getDefaultDetailRange() {
+  var now = new Date();
+  return {start: new Date(now.getFullYear(),0,1), end: now, label: 'YTD '+now.getFullYear()};
+}
+
+function toInputDate(d) {
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+function setDetailRange(start, end, label) {
+  selectedDetailRange = {start:start, end:end, label:label};
+  closeDetailRangePicker();
+  renderDetail();
+}
+
+function applyDetailShortcut(s) {
+  var yr = selectedDetailYear, now = new Date();
+  if(s==='YTD')         setDetailRange(new Date(yr,0,1), yr===now.getFullYear()?now:new Date(yr,11,31,23,59,59), 'YTD '+yr);
+  else if(s==='Q1')     setDetailRange(new Date(yr,0,1),  new Date(yr,2,31,23,59,59),  'Q1 '+yr);
+  else if(s==='Q2')     setDetailRange(new Date(yr,3,1),  new Date(yr,5,30,23,59,59),  'Q2 '+yr);
+  else if(s==='Q3')     setDetailRange(new Date(yr,6,1),  new Date(yr,8,30,23,59,59),  'Q3 '+yr);
+  else if(s==='Q4')     setDetailRange(new Date(yr,9,1),  new Date(yr,11,31,23,59,59), 'Q4 '+yr);
+  else if(s==='Full')   setDetailRange(new Date(yr,0,1),  new Date(yr,11,31,23,59,59), 'Full year '+yr);
+}
+
+function applyDetailCustomRange() {
+  var s = document.getElementById('detail-range-start');
+  var e = document.getElementById('detail-range-end');
+  if(!s||!e) return;
+  var start = new Date(s.value+'T00:00:00'), end = new Date(e.value+'T23:59:59');
+  if(isNaN(start)||isNaN(end)) return;
+  if(end < start){ var tmp=start; start=end; end=tmp; }
+  var f = function(d){ return (d.getMonth()+1)+'/'+d.getDate()+'/'+d.getFullYear(); };
+  setDetailRange(start, end, f(start)+' \u2013 '+f(end));
+}
+
+function refreshDetailRangePicker() { closeDetailRangePicker(); setTimeout(openDetailRangePicker, 0); }
+
+function openDetailRangePicker() {
+  if(document.getElementById('detail-range-picker')){ closeDetailRangePicker(); return; }
+  var now = new Date();
+  var yr = selectedDetailYear;
+  var range = selectedDetailRange || getDefaultDetailRange();
+  var availYears = Array.from(new Set(
+    allRows.concat(allRows25).map(function(r){ var dt=new Date(r['Date']); return isNaN(dt)?null:dt.getFullYear(); }).filter(Boolean)
+  )).sort();
+
+  var html =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+    +'<span style="font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;">Select date range</span>'
+    +'<button onclick="closeDetailRangePicker()" style="background:transparent;border:none;color:#888780;cursor:pointer;font-size:16px;line-height:1;padding:0;">&#x2715;</button>'
+    +'</div>'
+    +'<div style="margin-bottom:10px;"><div style="font-size:10px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px;">Year</div>'
+    +'<div style="display:flex;gap:4px;">'
+    + availYears.map(function(y){
+        var active = y===yr;
+        return '<button onclick="selectedDetailYear='+y+';refreshDetailRangePicker()" style="padding:4px 14px;border-radius:6px;border:'+(active?'1.5px solid #378ADD':'1.5px solid #444441')+';background:'+(active?'#0C447C':'transparent')+';color:'+(active?'#85B7EB':'#888780')+';font-size:12px;font-weight:'+(active?'500':'400')+';cursor:pointer;font-family:system-ui;">'+y+'</button>';
+      }).join('')
+    +'</div></div>'
+    +'<div style="margin-bottom:10px;"><div style="font-size:10px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px;">Quick select</div>'
+    +'<div style="display:flex;gap:4px;flex-wrap:wrap;">'
+    + ['YTD','Q1','Q2','Q3','Q4','Full'].map(function(s){
+        var lbl = s==='YTD'?'YTD '+yr : s==='Full'?'Full year '+yr : s+' '+yr;
+        var active = range.label===lbl;
+        return '<button onclick="applyDetailShortcut(\''+s+'\')" style="padding:4px 12px;border-radius:6px;border:'+(active?'1.5px solid #378ADD':'1.5px solid #444441')+';background:'+(active?'#0C447C':'transparent')+';color:'+(active?'#85B7EB':'#888780')+';font-size:11px;cursor:pointer;font-family:system-ui;">'+s+'</button>';
+      }).join('')
+    +'</div></div>'
+    +'<div><div style="font-size:10px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px;">Custom range</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+    +'<input type="date" id="detail-range-start" value="'+toInputDate(range.start)+'" style="padding:5px 8px;border:0.5px solid #444441;border-radius:6px;background:#141618;color:#e8e6e0;font-size:12px;">'
+    +'<span style="color:#5f5e5a;font-size:12px;">to</span>'
+    +'<input type="date" id="detail-range-end" value="'+toInputDate(range.end > now ? now : range.end)+'" style="padding:5px 8px;border:0.5px solid #444441;border-radius:6px;background:#141618;color:#e8e6e0;font-size:12px;">'
+    +'<button onclick="applyDetailCustomRange()" style="padding:5px 14px;border-radius:6px;border:1.5px solid #378ADD;background:#0C447C;color:#85B7EB;font-size:12px;font-weight:500;cursor:pointer;font-family:system-ui;">Apply</button>'
+    +'</div></div>';
+
+  var picker = document.createElement('div');
+  picker.id = 'detail-range-picker';
+  picker.style.cssText = 'position:absolute;z-index:1000;background:#1e2124;border:0.5px solid #444441;border-radius:12px;padding:1rem;min-width:320px;left:0;top:44px;';
+  picker.innerHTML = html;
+  picker.addEventListener('click', function(e){ e.stopPropagation(); });
+  var anchor = document.getElementById('detail-range-anchor');
+  if(anchor) anchor.appendChild(picker);
+  setTimeout(function(){
+    document.addEventListener('click', function handler(){
+      closeDetailRangePicker();
+      document.removeEventListener('click', handler);
+    });
+  }, 200);
+}
+
+function closeDetailRangePicker() {
+  var p = document.getElementById('detail-range-picker');
+  if(p) p.remove();
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────
+
 function render() {
   Object.values(charts).forEach(function(c){ try{c.destroy();}catch(e){} });
   charts = {};
@@ -748,7 +841,7 @@ function renderToday() {
     +'<div style="display:flex;justify-content:space-between;font-size:10px;color:#5f5e5a;margin-top:4px"><span style="color:#94A3B8">'+ytdUnits.toLocaleString()+' to date</span><span>target: 3,927,000</span></div>'
     +'</div></div></div>';
 
-  var dateNavHTML='<div style="display:flex;align-items:center;gap:6px;flex-shrink:0" id="date-nav-anchor">'
+  var dateNavHTML='<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;position:relative;" id="date-nav-anchor">'
     +'<button onclick="navDay(-1)" '+(prevDisabled?'disabled':'')+' style="width:28px;height:28px;flex-shrink:0;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:'+(prevDisabled?'default':'pointer')+';color:'+(prevDisabled?'#444441':'#e8e6e0')+';font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8249;</button>'
     +'<div onclick="openPicker()" style="text-align:center;width:260px;flex-shrink:0;cursor:pointer;padding:4px 12px;border-radius:8px;border:0.5px solid #444441;background:transparent;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'transparent\'">'
     +'<div style="font-size:13px;font-weight:500;color:#e8e6e0;white-space:nowrap;">'+viewFmt+' &#x25BE;</div>'
@@ -983,7 +1076,7 @@ function renderWeekly() {
   var friEndFmt=wkFri.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
   var barPct=weeklyTarget?Math.min(Math.round((weekUnits/weeklyTarget)*100),100):0;
   var targetLabel=targetIsFullySet?'<span style="color:#1D9E75">(set)</span>':targetIsEstimated?'<span style="color:#EF9F27">(est.)</span>':'(avg)';
-  var weekNavHTML='<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;" id="week-nav-anchor">'
+  var weekNavHTML='<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;position:relative;" id="week-nav-anchor">'
     +'<button onclick="navWeek(-1)" style="width:28px;height:28px;flex-shrink:0;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:pointer;color:#e8e6e0;font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8249;</button>'
     +'<div onclick="openWeekPicker()" style="text-align:center;width:260px;flex-shrink:0;cursor:pointer;padding:4px 12px;border-radius:8px;border:0.5px solid #444441;background:transparent;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'transparent\'">'
     +'<div style="font-size:13px;font-weight:500;color:#e8e6e0;white-space:nowrap;">Week '+weekNum+' &nbsp;&middot;&nbsp; '+monFmt+' \u2013 '+friEndFmt+' &#x25BE;</div>'
@@ -1040,11 +1133,6 @@ function renderWeekly() {
   });
 }
 
-function getDefaultDetailRange() {
-  var now = new Date();
-  return {start: new Date(now.getFullYear(),0,1), end: now, label: 'YTD '+now.getFullYear()};
-}
-
 function renderDetail() {
   var now = new Date();
   var navHTML = '';
@@ -1081,7 +1169,7 @@ function renderDetail() {
     var monFmt2 = selectedWeekMon.toLocaleDateString('en-US',{month:'short',day:'numeric'});
     var friEndFmt2 = wkFri2.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
     sourceRows = allRows.concat(allRows25).filter(function(r){ var dt=new Date(r['Date']); return !isNaN(dt)&&dt>=selectedWeekMon&&dt<=wkEnd2; });
-    navHTML = '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-bottom:12px;" id="week-nav-anchor">'
+    navHTML = '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-bottom:12px;position:relative;" id="week-nav-anchor">'
       +'<button onclick="navWeek(-1)" style="width:28px;height:28px;flex-shrink:0;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:pointer;color:#e8e6e0;font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8249;</button>'
       +'<div onclick="openWeekPicker()" style="text-align:center;width:260px;flex-shrink:0;cursor:pointer;padding:4px 12px;border-radius:8px;border:0.5px solid #444441;background:transparent;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'transparent\'">'
       +'<div style="font-size:13px;font-weight:500;color:#e8e6e0;white-space:nowrap;">Week '+weekNum2+' &nbsp;&middot;&nbsp; '+monFmt2+' \u2013 '+friEndFmt2+' &#x25BE;</div>'
@@ -1093,14 +1181,11 @@ function renderDetail() {
       +'</div></div>';
 
   } else {
-    // Trend — dynamic date range picker
     if(!selectedDetailRange) selectedDetailRange = getDefaultDetailRange();
     var range = selectedDetailRange;
-    var now2 = new Date();
     var fmtShort = function(d){ return (d.getMonth()+1)+'/'+d.getDate()+'/'+d.getFullYear(); };
     var displayLabel = range.label || (fmtShort(range.start)+' \u2013 '+fmtShort(range.end));
-    var baseRows = allRows.concat(allRows25);
-    sourceRows = baseRows.filter(function(r){
+    sourceRows = allRows.concat(allRows25).filter(function(r){
       var dt=new Date(r['Date']); if(isNaN(dt)) return false;
       return dt>=range.start && dt<=range.end;
     });
@@ -1112,15 +1197,10 @@ function renderDetail() {
       +'</div>';
   }
 
-  // Build scoped lot map from only the filtered source rows — units are scoped correctly
   var scopedLotMap = buildLotMap(sourceRows);
   var lots = Object.values(scopedLotMap).filter(Boolean);
-
-  // Build filter options from scoped lots
   var customers = Array.from(new Set(lots.map(function(l){ return (l.product||'').split('-')[0].trim(); }).filter(Boolean))).sort();
   var products  = Array.from(new Set(lots.map(function(l){ return l.product; }).filter(Boolean))).sort();
-  var weekNums  = [];
-  var weekOpts  = [];
   var bottleSizes = Array.from(new Set(sourceRows.map(function(r){ return r['Bottle Size']; }).filter(Boolean))).sort();
   var jarSizes    = Array.from(new Set(sourceRows.map(function(r){ return r['Jar Size']; }).filter(Boolean))).sort();
 
@@ -1374,6 +1454,13 @@ function renderPerformance() {
 
   document.getElementById('jar-legend').innerHTML='<table style="width:100%;border-collapse:collapse;font-size:11px"><tbody>'+jarLegHTML+'</tbody></table>';
   charts.jar=new Chart(document.getElementById('cJar'),{type:'doughnut',data:{labels:jarEntries.map(function(e){return e[0];}),datasets:[{data:jarEntries.map(function(e){return e[1];}),backgroundColor:JAR_COLORS,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){var v=ctx.raw,p=jarTotal?((v/jarTotal)*100).toFixed(1):0;return v.toLocaleString()+' units ('+p+'%)';}}}}}});
+}
+
+// ─── Boot — MUST be at the bottom, after all functions are defined ─────────
+if (sessionStorage.getItem('dtf_auth') === '1') {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('main-app').style.display = 'block';
+  loadDashboard();
 }
 </script>
 </body>
