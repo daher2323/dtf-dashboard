@@ -265,7 +265,7 @@ function buildProductionDays(preserveSelection) {
   var now = new Date();
   var todayStr = (now.getMonth()+1)+'/'+now.getDate()+'/'+now.getFullYear();
   var seen = new Set();
-  allRows.forEach(function(r){
+  allRows.concat(allRows25).forEach(function(r){
     var d = (r['Date']||'').trim(); if (!d) return;
     var dt = new Date(d); if (isNaN(dt)) return;
     seen.add((dt.getMonth()+1)+'/'+dt.getDate()+'/'+dt.getFullYear());
@@ -410,11 +410,11 @@ function openPicker() {
   }).join('');
   var picker = document.createElement('div');
   picker.id = 'day-picker';
-  picker.style.cssText = 'position:absolute;z-index:1000;background:#1e2124;border:0.5px solid #444441;border-radius:12px;padding:1rem;max-height:400px;overflow-y:auto;min-width:240px;right:0;top:44px;';
+  picker.style.cssText = 'position:absolute;z-index:1000;background:#1e2124;border:0.5px solid #444441;border-radius:12px;padding:1rem;max-height:400px;overflow-y:auto;min-width:240px;left:0;top:44px;';
   picker.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem"><span style="font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em">Select date</span><button onclick="closePicker()" style="background:transparent;border:none;color:#888780;cursor:pointer;font-size:16px;line-height:1;padding:0">&#x2715;</button></div>'+monthsHTML;
   picker.addEventListener('click', function(e){ e.stopPropagation(); });
   var anchor = document.getElementById('date-nav-anchor');
-  if (anchor) { anchor.style.position = 'relative'; anchor.appendChild(picker); }
+  if (anchor) { anchor.appendChild(picker); }
   setTimeout(function(){ document.addEventListener('click', closePicker, {once:true}); }, 0);
 }
 
@@ -1051,11 +1051,11 @@ function renderDetail() {
     var viewFmt = viewDate.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
     var dayLabel = isLive ? '(Today)' : (function(){ var diff=Math.round((now-viewDate)/86400000); return diff===1?'(Yesterday)':'('+diff+' days ago)'; })();
     var prevDisabled = selectedDayIdx <= 0, nextDisabled = isLive;
-    sourceRows = allRows.filter(function(r){
+    sourceRows = allRows.concat(allRows25).filter(function(r){
       var dt=new Date(r['Date']); if(isNaN(dt)) return false;
       return dt.getFullYear()===viewDate.getFullYear()&&dt.getMonth()===viewDate.getMonth()&&dt.getDate()===viewDate.getDate();
     });
-    navHTML = '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-bottom:12px;" id="date-nav-anchor">'
+    navHTML = '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-bottom:12px;position:relative;" id="date-nav-anchor">'
       +'<button onclick="navDay(-1)" '+(prevDisabled?'disabled':'')+' style="width:28px;height:28px;flex-shrink:0;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:'+(prevDisabled?'default':'pointer')+';color:'+(prevDisabled?'#444441':'#e8e6e0')+';font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8249;</button>'
       +'<div onclick="openPicker()" style="text-align:center;width:260px;flex-shrink:0;cursor:pointer;padding:4px 12px;border-radius:8px;border:0.5px solid #444441;background:transparent;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'transparent\'">'
       +'<div style="font-size:13px;font-weight:500;color:#e8e6e0;white-space:nowrap;">'+viewFmt+' &#x25BE;</div>'
@@ -1074,7 +1074,7 @@ function renderDetail() {
     var weekNum2 = getWeekNum(selectedWeekMon);
     var monFmt2 = selectedWeekMon.toLocaleDateString('en-US',{month:'short',day:'numeric'});
     var friEndFmt2 = wkFri2.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-    sourceRows = allRows.filter(function(r){ var dt=new Date(r['Date']); return !isNaN(dt)&&dt>=selectedWeekMon&&dt<=wkEnd2; });
+    sourceRows = allRows.concat(allRows25).filter(function(r){ var dt=new Date(r['Date']); return !isNaN(dt)&&dt>=selectedWeekMon&&dt<=wkEnd2; });
     navHTML = '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-bottom:12px;" id="week-nav-anchor">'
       +'<button onclick="navWeek(-1)" style="width:28px;height:28px;flex-shrink:0;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:pointer;color:#e8e6e0;font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8249;</button>'
       +'<div onclick="openWeekPicker()" style="text-align:center;width:260px;flex-shrink:0;cursor:pointer;padding:4px 12px;border-radius:8px;border:0.5px solid #444441;background:transparent;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'transparent\'">'
