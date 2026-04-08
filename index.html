@@ -1041,6 +1041,7 @@ function renderWeekly() {
   // pace projection
   var dailyRate = daysElapsed ? weekUnits/daysElapsed : 0;
   var weekProj = Math.round(dailyRate * 5);
+  var onPace = weekProj >= weeklyTarget;
   var statusLabel, statusBg, statusTxt;
   if(isLiveWeek) {
     statusLabel = onPace ? 'On pace' : 'Behind pace';
