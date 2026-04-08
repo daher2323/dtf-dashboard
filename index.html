@@ -1566,7 +1566,7 @@ function renderDetail() {
     return filteredLotKeys ? filteredLotKeys.has(l.lot) : true;
   });
 
-  var products=Array.from(new Set(lots.map(function(l){return l.product;}).filter(Boolean))).sort();
+  var customers=Array.from(new Set(lots.map(function(l){return (l.product||'').split('-')[0].trim();}).filter(Boolean))).sort();
   var weekNums=Array.from(new Set(lots.map(function(l){return l.week;}).filter(Boolean)))
     .sort(function(a,b){return parseFloat(b)-parseFloat(a);});
   var weeks=weekNums.map(function(w){
@@ -1606,6 +1606,7 @@ function setDetailYear(y) {
 
 function getFilteredLots(){
   var search=document.getElementById('fSearch')?document.getElementById('fSearch').value.toLowerCase():'';
+  var cust=document.getElementById('fCustomer')?document.getElementById('fCustomer').value:'';
   var prod=document.getElementById('fProduct')?document.getElementById('fProduct').value:'';
   var status=document.getElementById('fStatus')?document.getElementById('fStatus').value:'';
   var week=document.getElementById('fWeek')?document.getElementById('fWeek').value:'';
@@ -1616,6 +1617,7 @@ function getFilteredLots(){
   return Object.values(sourceLM).filter(Boolean).filter(function(l){
     if(scopeKeys && !scopeKeys.has(l.lot)) return false;
     if(search&&!(l.lot.toLowerCase().includes(search)||l.product.toLowerCase().includes(search)))return false;
+    if(cust&&(l.product||'').split('-')[0].trim()!==cust)return false;
     if(prod&&l.product!==prod)return false;
     if(status&&!l.status.toLowerCase().includes(status.toLowerCase()))return false;
     if(week&&l.week!==week)return false;
@@ -1626,7 +1628,7 @@ function getFilteredLots(){
 }
 
 function applyFilters(){page=1;updateOpsTable();}
-function clearFilters(){['fSearch','fProduct','fStatus','fWeek','fBottle','fJar'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});applyFilters();}
+function clearFilters(){['fSearch','fCustomer','fProduct','fStatus','fWeek','fBottle','fJar'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});applyFilters();}
 function sortBy(col){if(sortCol===col)sortDir*=-1;else{sortCol=col;sortDir=1;}updateOpsTable();}
 function changePage(dir){page+=dir;updateOpsTable();}
 
