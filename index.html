@@ -1640,22 +1640,32 @@ function renderPerformance() {
   var jarTotal=jarEntries.reduce(function(s,e){return s+e[1];},0);
   var JAR_COLORS=['#378ADD','#1D9E75','#EF9F27','#D4537E','#7F77DD','#D85A30','#639922','#E24B4A','#85B7EB','#5DCAA5'];
 
-  // ── Customer table: build comparison lookup from comp-year lots ──────────
+  // ── Customer table: build directly from raw rows for both years ──────────
   var byCust={};
-  lots.forEach(function(l){ var c=(l.product||'').split('-')[0].trim(); if(!c) return; if(!byCust[c]) byCust[c]={units:0,lots:0}; byCust[c].units+=l.finalUnits; byCust[c].lots++; });
+  rangeRows.forEach(function(r){
+    var prod=(r['Product']||'').trim(); if(!prod) return;
+    var c=prod.split('-')[0].trim(); if(!c) return;
+    if(!byCust[c]) byCust[c]={units:0,lots:new Set()};
+    byCust[c].units+=num(r['Final Units']);
+    var lot=(r['Lot Number']||'').trim(); if(lot) byCust[c].lots.add(lot);
+  });
+  Object.keys(byCust).forEach(function(k){ byCust[k].lots=byCust[k].lots.size; });
   var allCustSorted=Object.entries(byCust).sort(function(a,b){return b[1].units-a[1].units;});
   var maxCU=allCustSorted[0]?allCustSorted[0][1].units:1;
 
-  // Build per-customer totals from comparison-year rows
-  // Use lowercased key for matching to handle case/spacing differences between years
+  // Build per-customer totals directly from comparison-year raw rows
+  // (bypasses buildLotMap to avoid lot-number key collisions between years)
   var byCust25raw={};
-  lots25.forEach(function(l){
-    var c=(l.product||'').split('-')[0].trim(); if(!c) return;
+  rangeRows25.forEach(function(r){
+    var prod=(r['Product']||'').trim(); if(!prod) return;
+    var c=prod.split('-')[0].trim(); if(!c) return;
     var ck=c.toLowerCase();
-    if(!byCust25raw[ck]) byCust25raw[ck]={units:0,lots:0,displayName:c};
-    byCust25raw[ck].units+=l.finalUnits; byCust25raw[ck].lots++;
+    if(!byCust25raw[ck]) byCust25raw[ck]={units:0,lots:new Set(),displayName:c};
+    byCust25raw[ck].units+=num(r['Final Units']);
+    var lot=(r['Lot Number']||'').trim(); if(lot) byCust25raw[ck].lots.add(lot);
   });
-  // Build lookup keyed by lowercase for matching, but also keep original-case map
+  // Convert lot Sets to counts
+  Object.keys(byCust25raw).forEach(function(k){ byCust25raw[k].lots=byCust25raw[k].lots.size; });
   var byCust25={};
   Object.keys(byCust25raw).forEach(function(ck){ byCust25[ck]=byCust25raw[ck]; });
   function getCust25(name){ return byCust25[(name||'').toLowerCase()]||null; }
