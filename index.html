@@ -1516,6 +1516,12 @@ if (sessionStorage.getItem('dtf_auth') === '1') {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('main-app').style.display = 'block';
   loadDashboard();
+} else {
+  // Explicitly focus password field after page renders
+  window.addEventListener('load', function(){
+    var pw = document.getElementById('pw-input');
+    if(pw) pw.focus();
+  });
 }
 </script>
 </body>
