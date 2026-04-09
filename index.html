@@ -66,7 +66,24 @@
   .filters .filter-export-btn {
     flex: 0 0 auto;
     margin-left: auto;
+    position: relative;
   }
+  /* Export popover */
+  .export-popover {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    background: #1e2124;
+    border: 0.5px solid #444441;
+    border-radius: 10px;
+    padding: 10px 12px;
+    min-width: 300px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    z-index: 99998;
+    white-space: nowrap;
+  }
+  .export-popover-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .export-popover-meta { font-size: 11px; color: #5f5e5a; margin-top: 8px; padding-top: 8px; border-top: 0.5px solid #2c2c2a; }
 
   .ms-trigger { display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:8px;border:0.5px solid #444441;background:#1e2124;color:#888780;font-size:12px;cursor:pointer;white-space:nowrap;height:28px;user-select:none; }
   .ms-trigger.active { border-color:#378ADD;color:#e8e6e0; }
@@ -1463,7 +1480,7 @@ function renderDetail() {
     +    buildMultiSelect('bottle','Bottle',bottleSizes,filterState.bottle)
     +    buildMultiSelect('jar','Jar size',jarSizes,filterState.jar)
     +    '<button onclick="clearFilters()" class="filter-clear-btn" style="font-size:12px;padding:5px 12px;border:0.5px solid #444441;border-radius:8px;background:transparent;cursor:pointer;color:#888780;">Clear</button>'
-    +    '<button onclick="exportDetailExcel()" id="export-btn" class="filter-export-btn" style="font-size:12px;padding:5px 12px;border:1.5px solid #378ADD;border-radius:8px;background:#0C447C;cursor:pointer;color:#85B7EB;font-weight:500;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;"><svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#85B7EB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 1v7M3.5 5.5l3 3 3-3M2 11h9"/></svg><span id="export-count">Export</span></button>'
+    +    '<div class="filter-export-btn" id="export-wrap"><button onclick="toggleExportPopover(event)" id="export-btn" style="font-size:12px;padding:5px 12px;border:1.5px solid #378ADD;border-radius:8px;background:#0C447C;cursor:pointer;color:#85B7EB;font-weight:500;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-family:system-ui;"><svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#85B7EB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 1v7M3.5 5.5l3 3 3-3M2 11h9"/></svg><span id="export-count">Export</span></button></div>'
     +  '</div>'
     +'</div>'
     +'<div id="ops-metrics" class="metrics" style="margin-bottom:1rem"></div>'
@@ -1626,6 +1643,72 @@ function renderPerformance() {
 
   document.getElementById('jar-legend').innerHTML='<table style="width:100%;border-collapse:collapse;font-size:11px"><tbody>'+jarLegHTML+'</tbody></table>';
   charts.jar=new Chart(document.getElementById('cJar'),{type:'doughnut',data:{labels:jarEntries.map(function(e){return e[0];}),datasets:[{data:jarEntries.map(function(e){return e[1];}),backgroundColor:JAR_COLORS,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){var v=ctx.raw,p=jarTotal?((v/jarTotal)*100).toFixed(1):0;return v.toLocaleString()+' units ('+p+'%)';}}}}}});
+}
+
+// ─── Export popover ──────────────────────────────────────────────────────
+
+function toggleExportPopover(e) {
+  e.stopPropagation();
+  var existing = document.getElementById('export-popover');
+  if (existing) { existing.remove(); return; }
+
+  var lots = getFilteredLots();
+  var count = lots.length;
+  var ec = document.getElementById('export-count');
+  if (ec) ec.textContent = 'Export ' + count.toLocaleString() + ' lots';
+
+  // Build meta line: active filters + range
+  var metaParts = [];
+  var range = selectedDetailRange ? selectedDetailRange.label : (subView === 'today' ? (productionDays[selectedDayIdx] || 'Today') : subView === 'weekly' ? 'This week' : 'YTD');
+  metaParts.push(range);
+  var activeFilters = [];
+  ['customer','product','status','bottle','jar'].forEach(function(id) {
+    var arr = filterState[id] || [];
+    if (arr.length) activeFilters.push(arr.length + ' ' + id);
+  });
+  if (activeFilters.length) metaParts.push(activeFilters.join(', ') + ' filtered');
+  var metaStr = count.toLocaleString() + ' lots · ' + metaParts.join(' · ');
+
+  var popover = document.createElement('div');
+  popover.id = 'export-popover';
+  popover.className = 'export-popover';
+  popover.innerHTML =
+    '<div class="export-popover-row">'
+    + '<span style="font-size:12px;color:#e8e6e0;">Export <strong style="font-weight:500;">' + count.toLocaleString() + ' lots</strong> to Excel?</span>'
+    + '<div style="display:flex;gap:6px;">'
+    + '<button onclick="closeExportPopover()" style="padding:4px 10px;border-radius:6px;border:0.5px solid #444441;background:transparent;cursor:pointer;color:#888780;font-size:12px;font-family:system-ui;">Cancel</button>'
+    + '<button onclick="confirmExport()" style="padding:4px 10px;border-radius:6px;border:1.5px solid #1D9E75;background:#085041;cursor:pointer;color:#9FE1CB;font-size:12px;font-weight:500;font-family:system-ui;display:inline-flex;align-items:center;gap:5px;"><svg width="11" height="11" viewBox="0 0 11 11" fill="none"><polyline points="1.5,5.5 4.5,8.5 9.5,2.5" stroke="#9FE1CB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Confirm</button>'
+    + '</div>'
+    + '</div>'
+    + '<div class="export-popover-meta">' + metaStr + '</div>';
+
+  popover.addEventListener('click', function(ev) { ev.stopPropagation(); });
+
+  var wrap = document.getElementById('export-wrap');
+  if (wrap) wrap.appendChild(popover);
+
+  setTimeout(function() {
+    document.addEventListener('click', closeExportPopoverOutside, true);
+  }, 0);
+}
+
+function closeExportPopoverOutside(e) {
+  var pop = document.getElementById('export-popover');
+  var wrap = document.getElementById('export-wrap');
+  if (pop && !pop.contains(e.target) && wrap && !wrap.contains(e.target)) {
+    closeExportPopover();
+  }
+}
+
+function closeExportPopover() {
+  document.removeEventListener('click', closeExportPopoverOutside, true);
+  var pop = document.getElementById('export-popover');
+  if (pop) pop.remove();
+}
+
+function confirmExport() {
+  closeExportPopover();
+  exportDetailExcel();
 }
 
 // ─── Boot ─────────────────────────────────────────────────────────────────
