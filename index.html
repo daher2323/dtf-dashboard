@@ -34,16 +34,10 @@
   .ms-trigger.active { border-color:#378ADD;color:#e8e6e0; }
   .ms-badge { background:#378ADD;color:#042C53;font-size:10px;font-weight:500;padding:1px 6px;border-radius:8px; }
   .ms-wrap { position:relative;flex-shrink:0; }
-  .ms-panel { position:absolute;z-index:500;background:#1e2124;border:0.5px solid #444441;border-radius:10px;padding:8px;min-width:220px;top:34px;left:0; }
-  .ms-search { width:100%;padding:5px 8px;border:0.5px solid #444441;border-radius:6px;background:#141618;color:#e8e6e0;font-size:12px;margin-bottom:6px;outline:none; }
-  .ms-list { max-height:200px;overflow-y:auto; }
   .ms-item { display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:12px;color:#e8e6e0;cursor:pointer; }
   .ms-item:hover { background:#252829; }
   .ms-chk { width:14px;height:14px;border-radius:3px;border:0.5px solid #444441;background:#141618;flex-shrink:0;display:flex;align-items:center;justify-content:center; }
   .ms-chk.on { background:#0C447C;border-color:#378ADD; }
-  .ms-footer { border-top:0.5px solid #2c2c2a;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;align-items:center; }
-  .ms-count { font-size:11px;color:#5f5e5a; }
-  .ms-clear { font-size:11px;color:#378ADD;cursor:pointer;background:none;border:none;padding:0; }
   .tbl-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   thead th { text-align: left; padding: 6px 10px; border-bottom: 0.5px solid #2c2c2a; color: #888780; font-weight: 500; white-space: nowrap; cursor: pointer; user-select: none; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
@@ -60,6 +54,22 @@
   .pagination { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; color: #888780; }
   .pagination button { padding: 4px 10px; border: 0.5px solid #444441; border-radius: 6px; background: transparent; cursor: pointer; font-size: 12px; color: #e8e6e0; }
   .pagination button:disabled { opacity: .3; cursor: default; }
+  /* Multi-select panel — fixed position, very high z-index, never clipped */
+  .ms-panel-fixed {
+    position: fixed;
+    z-index: 99999;
+    background: #1e2124;
+    border: 0.5px solid #444441;
+    border-radius: 10px;
+    padding: 8px;
+    min-width: 220px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+  }
+  .ms-search { width:100%;padding:5px 8px;border:0.5px solid #444441;border-radius:6px;background:#141618;color:#e8e6e0;font-size:12px;margin-bottom:6px;outline:none; }
+  .ms-list { max-height:200px;overflow-y:auto; }
+  .ms-footer { border-top:0.5px solid #2c2c2a;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;align-items:center; }
+  .ms-count { font-size:11px;color:#5f5e5a; }
+  .ms-clear { font-size:11px;color:#378ADD;cursor:pointer;background:none;border:none;padding:0; }
   @keyframes dtfPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
   @media (max-width: 700px) { .charts-row { grid-template-columns: 1fr; } }
 </style>
@@ -135,119 +145,143 @@ var selectedDetailRange = null;
 var lastRefreshTime = 0;
 var filterState = { customer:[], product:[], status:[], bottle:[], jar:[] };
 
+// Currently open ms panel id
+var _openMsId = null;
+
 function lk(s) { return (s||'').replace(/\s/g,'').toLowerCase(); }
 
-// ─── Multi-select event delegation ───────────────────────────────────────
-document.addEventListener('click', function(e) {
-  // Close button inside panel
-  if(e.target.closest('[data-ms-close]')) {
-    closeAllMsPanels();
-    return;
-  }
-  // Trigger button — open/close panel
-  var trig = e.target.closest('[data-ms-id]');
-  if(trig) {
-    var id = trig.getAttribute('data-ms-id');
-    toggleMsPanel(id);
-    return;
-  }
-  // Checkbox item inside panel
-  var item = e.target.closest('[data-ms-item]');
-  if(item) {
-    var id = item.getAttribute('data-ms-item-id');
-    var val = item.getAttribute('data-ms-val');
-    toggleMsItem(id, val);
-    return;
-  }
-  // Clear button inside panel
-  var clr = e.target.closest('[data-ms-clear]');
-  if(clr) {
-    clearMsFilter(clr.getAttribute('data-ms-clear'));
-    return;
-  }
-  // Click outside any open panel — close all
-  if(!e.target.closest('[id^="ms-panel-"]')) {
-    closeAllMsPanels();
-  }
-});
-
-function buildMultiSelect(id, label, options, selectedArr) {
-  var count = selectedArr.length;
-  var allLabels = {customer:'All customers',product:'All products',status:'All statuses',bottle:'All bottles',jar:'All jars'};
-  var triggerLabel = count > 0 ? label+' <span class="ms-badge">'+count+'</span>' : allLabels[id];
-  return '<div class="ms-wrap" id="ms-wrap-'+id+'">'
-    +'<div class="ms-trigger'+(count>0?' active':'')+'" onclick="toggleMsPanel(\''+id+'\')" id="ms-trig-'+id+'">'+triggerLabel+' <span style="font-size:9px;color:#5f5e5a;">&#x25BE;</span></div>'
-    +'</div>';
-}
+// ─── Multi-select: open/close ─────────────────────────────────────────────
 
 function toggleMsPanel(id) {
-  var existing = document.getElementById('ms-panel-'+id);
-  if(existing){ existing.remove(); document.removeEventListener('mousedown', closeMsOnOutside); return; }
-  closeAllMsPanels();
-  var trig = document.getElementById('ms-trig-'+id); if(!trig) return;
+  if (_openMsId === id) { closeMsPanel(); return; }
+  closeMsPanel();
+  _openMsId = id;
+
+  var trig = document.getElementById('ms-trig-' + id);
+  if (!trig) return;
   var rect = trig.getBoundingClientRect();
-  var allOpts = window._msOptions && window._msOptions[id] ? window._msOptions[id] : [];
+
+  var allOpts = (window._msOptions && window._msOptions[id]) ? window._msOptions[id] : [];
   var selected = filterState[id] || [];
+
   var panel = document.createElement('div');
-  panel.id = 'ms-panel-'+id;
-  panel.style.cssText = 'position:fixed;z-index:9999;background:#1e2124;border:0.5px solid #444441;border-radius:10px;padding:8px;min-width:220px;box-shadow:0 4px 20px rgba(0,0,0,0.5);';
-  panel.style.top = (rect.bottom + 4) + 'px';
+  panel.id = 'ms-panel-' + id;
+  panel.className = 'ms-panel-fixed';
+  panel.style.top  = (rect.bottom + 4) + 'px';
   panel.style.left = rect.left + 'px';
+
   panel.innerHTML =
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
-    +'<input class="ms-search" id="ms-search-'+id+'" placeholder="Search\u2026" oninput="filterMsList(\''+id+'\')" style="flex:1;margin-right:6px;">'
-    +'<button onclick="closeAllMsPanels()" style="background:transparent;border:none;color:#888780;cursor:pointer;font-size:16px;line-height:1;padding:2px 4px;flex-shrink:0;">&#x2715;</button>'
-    +'</div>'
-    +'<div class="ms-list" id="ms-list-'+id+'">'+renderMsItems(id, allOpts, selected, '')+'</div>'
-    +'<div class="ms-footer"><span class="ms-count" id="ms-count-'+id+'">'+selected.length+' selected</span>'
-    +'<button class="ms-clear" onclick="clearMsFilter(\''+id+'\')">Clear</button></div>';
-  panel.addEventListener('mousedown', function(e){ e.stopPropagation(); });
-  document.getElementById('content').appendChild(panel);
-  var si = document.getElementById('ms-search-'+id); if(si) si.focus();
-  setTimeout(function(){ document.addEventListener('mousedown', closeMsOnOutside); }, 0);
+    + '<input class="ms-search" id="ms-search-' + id + '" placeholder="Search\u2026">'
+    + '<button id="ms-close-btn-' + id + '" style="background:transparent;border:none;color:#888780;cursor:pointer;font-size:16px;line-height:1;padding:2px 4px;flex-shrink:0;margin-left:6px;">&#x2715;</button>'
+    + '</div>'
+    + '<div class="ms-list" id="ms-list-' + id + '">' + renderMsItems(id, allOpts, selected, '') + '</div>'
+    + '<div class="ms-footer">'
+    + '<span class="ms-count" id="ms-count-' + id + '">' + selected.length + ' selected</span>'
+    + '<button class="ms-clear" id="ms-clear-btn-' + id + '">Clear</button>'
+    + '</div>';
+
+  document.body.appendChild(panel);
+
+  // Wire up search
+  var si = document.getElementById('ms-search-' + id);
+  if (si) {
+    si.addEventListener('input', function() { filterMsList(id); });
+    si.focus();
+  }
+
+  // Wire up close button
+  var closeBtn = document.getElementById('ms-close-btn-' + id);
+  if (closeBtn) {
+    closeBtn.addEventListener('click', function(e) { e.stopPropagation(); closeMsPanel(); });
+  }
+
+  // Wire up clear button
+  var clearBtn = document.getElementById('ms-clear-btn-' + id);
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function(e) { e.stopPropagation(); clearMsFilter(id); });
+  }
+
+  // Wire up item clicks
+  panel.addEventListener('click', function(e) {
+    e.stopPropagation();
+    var item = e.target.closest('[data-ms-val]');
+    if (item) {
+      toggleMsItem(id, item.getAttribute('data-ms-val'));
+    }
+  });
+
+  // Outside-click closes panel — use setTimeout so this handler doesn't fire on the same click that opened it
+  setTimeout(function() {
+    document.addEventListener('click', outsideClickHandler, true);
+  }, 0);
 }
+
+function outsideClickHandler(e) {
+  if (!_openMsId) { document.removeEventListener('click', outsideClickHandler, true); return; }
+  var panel = document.getElementById('ms-panel-' + _openMsId);
+  var trig  = document.getElementById('ms-trig-' + _openMsId);
+  if (panel && panel.contains(e.target)) return;  // click inside panel — ignore
+  if (trig  && trig.contains(e.target))  return;  // click on trigger — toggleMsPanel handles it
+  closeMsPanel();
+}
+
+function closeMsPanel() {
+  document.removeEventListener('click', outsideClickHandler, true);
+  if (_openMsId) {
+    var p = document.getElementById('ms-panel-' + _openMsId);
+    if (p) p.remove();
+    _openMsId = null;
+  }
+}
+
+// ─── Multi-select: rendering & state ─────────────────────────────────────
 
 function renderMsItems(id, opts, selected, search) {
   var filtered = search ? opts.filter(function(o){ return o.toLowerCase().includes(search.toLowerCase()); }) : opts;
-  if(!filtered.length) return '<div style="padding:8px;font-size:12px;color:#5f5e5a;font-style:italic;">No options</div>';
-  return filtered.map(function(o){
+  if (!filtered.length) return '<div style="padding:8px;font-size:12px;color:#5f5e5a;font-style:italic;">No options</div>';
+  return filtered.map(function(o) {
     var on = selected.indexOf(o) !== -1;
     var safe = o.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-    return '<div class="ms-item" data-ms-item="1" data-ms-item-id="'+id+'" data-ms-val="'+safe+'" onclick="toggleMsItem(\''+id+'\',\''+o.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">'
-      +'<div class="ms-chk'+(on?' on':'')+'">'+( on?'<svg width="8" height="6" viewBox="0 0 8 6" fill="none"><polyline points="1,3 3,5 7,1" stroke="#85B7EB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>':'' )+'</div>'
-      +'<span>'+o+'</span></div>';
+    return '<div class="ms-item" data-ms-val="' + safe + '">'
+      + '<div class="ms-chk' + (on ? ' on' : '') + '">'
+      + (on ? '<svg width="8" height="6" viewBox="0 0 8 6" fill="none"><polyline points="1,3 3,5 7,1" stroke="#85B7EB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '')
+      + '</div><span>' + o + '</span></div>';
   }).join('');
 }
 
 function filterMsList(id) {
-  var si = document.getElementById('ms-search-'+id); if(!si) return;
-  var li = document.getElementById('ms-list-'+id); if(!li) return;
-  var opts = window._msOptions && window._msOptions[id] ? window._msOptions[id] : [];
-  li.innerHTML = renderMsItems(id, opts, filterState[id]||[], si.value);
+  var si = document.getElementById('ms-search-' + id); if (!si) return;
+  var li = document.getElementById('ms-list-' + id);   if (!li) return;
+  var opts = (window._msOptions && window._msOptions[id]) ? window._msOptions[id] : [];
+  li.innerHTML = renderMsItems(id, opts, filterState[id] || [], si.value);
 }
 
 function toggleMsItem(id, val) {
   var arr = filterState[id] || [];
   var idx = arr.indexOf(val);
-  if(idx === -1) arr.push(val); else arr.splice(idx, 1);
+  if (idx === -1) arr.push(val); else arr.splice(idx, 1);
   filterState[id] = arr;
-  var si = document.getElementById('ms-search-'+id);
-  var opts = window._msOptions && window._msOptions[id] ? window._msOptions[id] : [];
-  var li = document.getElementById('ms-list-'+id);
-  if(li) li.innerHTML = renderMsItems(id, opts, arr, si?si.value:'');
-  var cc = document.getElementById('ms-count-'+id); if(cc) cc.textContent = arr.length+' selected';
+
+  var si   = document.getElementById('ms-search-' + id);
+  var opts = (window._msOptions && window._msOptions[id]) ? window._msOptions[id] : [];
+  var li   = document.getElementById('ms-list-' + id);
+  if (li) li.innerHTML = renderMsItems(id, opts, arr, si ? si.value : '');
+
+  var cc = document.getElementById('ms-count-' + id); if (cc) cc.textContent = arr.length + ' selected';
   rebuildMsTrigger(id);
-  if(id==='customer') rebuildProductOptions();
+  if (id === 'customer') rebuildProductOptions();
   applyFilters();
 }
 
 function rebuildMsTrigger(id) {
-  var trig = document.getElementById('ms-trig-'+id); if(!trig) return;
-  var count = (filterState[id]||[]).length;
-  var labels = {customer:'Customer',product:'Product',status:'Status',bottle:'Bottle',jar:'Jar size'};
-  var allLabels = {customer:'All customers',product:'All products',status:'All statuses',bottle:'All bottles',jar:'All jars'};
-  trig.className = 'ms-trigger'+(count>0?' active':'');
-  trig.innerHTML = (count>0 ? labels[id]+' <span class="ms-badge">'+count+'</span>' : allLabels[id])+' <span style="font-size:9px;color:#5f5e5a;">&#x25BE;</span>';
+  var trig = document.getElementById('ms-trig-' + id); if (!trig) return;
+  var count = (filterState[id] || []).length;
+  var labels    = {customer:'Customer', product:'Product', status:'Status', bottle:'Bottle', jar:'Jar size'};
+  var allLabels = {customer:'All customers', product:'All products', status:'All statuses', bottle:'All bottles', jar:'All jars'};
+  trig.className = 'ms-trigger' + (count > 0 ? ' active' : '');
+  trig.innerHTML = (count > 0 ? labels[id] + ' <span class="ms-badge">' + count + '</span>' : allLabels[id])
+    + ' <span style="font-size:9px;color:#5f5e5a;">&#x25BE;</span>';
 }
 
 function rebuildProductOptions() {
@@ -256,35 +290,38 @@ function rebuildProductOptions() {
   var lots = Object.values(srcMap).filter(Boolean);
   var filtered = custFilter.length ? lots.filter(function(l){ return custFilter.indexOf((l.product||'').split('-')[0].trim()) !== -1; }) : lots;
   var prods = Array.from(new Set(filtered.map(function(l){ return l.product; }).filter(Boolean))).sort();
-  if(window._msOptions) window._msOptions['product'] = prods;
-  filterState['product'] = (filterState['product']||[]).filter(function(p){ return prods.indexOf(p) !== -1; });
+  if (window._msOptions) window._msOptions['product'] = prods;
+  filterState['product'] = (filterState['product'] || []).filter(function(p){ return prods.indexOf(p) !== -1; });
   rebuildMsTrigger('product');
   var li = document.getElementById('ms-list-product');
   var si = document.getElementById('ms-search-product');
-  if(li) li.innerHTML = renderMsItems('product', prods, filterState['product'], si?si.value:'');
-  var cc = document.getElementById('ms-count-product'); if(cc) cc.textContent = filterState['product'].length+' selected';
+  if (li) li.innerHTML = renderMsItems('product', prods, filterState['product'], si ? si.value : '');
+  var cc = document.getElementById('ms-count-product'); if (cc) cc.textContent = filterState['product'].length + ' selected';
 }
 
 function clearMsFilter(id) {
   filterState[id] = [];
-  if(id==='customer') rebuildProductOptions();
+  if (id === 'customer') rebuildProductOptions();
   rebuildMsTrigger(id);
-  var opts = window._msOptions && window._msOptions[id] ? window._msOptions[id] : [];
-  var li = document.getElementById('ms-list-'+id);
-  if(li) li.innerHTML = renderMsItems(id, opts, [], '');
-  var cc = document.getElementById('ms-count-'+id); if(cc) cc.textContent = '0 selected';
+  var opts = (window._msOptions && window._msOptions[id]) ? window._msOptions[id] : [];
+  var li = document.getElementById('ms-list-' + id);
+  if (li) li.innerHTML = renderMsItems(id, opts, [], '');
+  var cc = document.getElementById('ms-count-' + id); if (cc) cc.textContent = '0 selected';
   applyFilters();
 }
 
-function closeAllMsPanels() {
-  document.querySelectorAll('.ms-panel').forEach(function(p){ p.remove(); });
-  document.removeEventListener('mousedown', closeMsOnOutside);
+function buildMultiSelect(id, label, options, selectedArr) {
+  var count = selectedArr.length;
+  var allLabels = {customer:'All customers', product:'All products', status:'All statuses', bottle:'All bottles', jar:'All jars'};
+  var triggerLabel = count > 0 ? label + ' <span class="ms-badge">' + count + '</span>' : allLabels[id];
+  return '<div class="ms-wrap" id="ms-wrap-' + id + '">'
+    + '<div class="ms-trigger' + (count > 0 ? ' active' : '') + '" onclick="toggleMsPanel(\'' + id + '\')" id="ms-trig-' + id + '">'
+    + triggerLabel + ' <span style="font-size:9px;color:#5f5e5a;">&#x25BE;</span>'
+    + '</div></div>';
 }
 
-function closeMsOnOutside() { closeAllMsPanels(); }
-
 function applyFilters() {
-  if((filterState.customer||[]).length) rebuildProductOptions();
+  if ((filterState.customer || []).length) rebuildProductOptions();
   page = 1;
   updateOpsTable();
 }
@@ -292,20 +329,20 @@ function applyFilters() {
 function getFilteredLots() {
   var search = document.getElementById('fSearch') ? document.getElementById('fSearch').value.toLowerCase() : '';
   var srcMap = window._detailLotMap || lotMap;
-  return Object.values(srcMap).filter(Boolean).filter(function(l){
-    if(search && !(l.lot.toLowerCase().includes(search) || l.product.toLowerCase().includes(search))) return false;
-    if(filterState.customer.length && filterState.customer.indexOf((l.product||'').split('-')[0].trim()) === -1) return false;
-    if(filterState.product.length && filterState.product.indexOf(l.product) === -1) return false;
-    if(filterState.status.length && !filterState.status.some(function(s){ return l.status.toLowerCase().includes(s.toLowerCase()); })) return false;
-    if(filterState.bottle.length && filterState.bottle.indexOf(l.bottleSize) === -1) return false;
-    if(filterState.jar.length && filterState.jar.indexOf(l.jarSize) === -1) return false;
+  return Object.values(srcMap).filter(Boolean).filter(function(l) {
+    if (search && !(l.lot.toLowerCase().includes(search) || l.product.toLowerCase().includes(search))) return false;
+    if (filterState.customer.length && filterState.customer.indexOf((l.product||'').split('-')[0].trim()) === -1) return false;
+    if (filterState.product.length && filterState.product.indexOf(l.product) === -1) return false;
+    if (filterState.status.length && !filterState.status.some(function(s){ return l.status.toLowerCase().includes(s.toLowerCase()); })) return false;
+    if (filterState.bottle.length && filterState.bottle.indexOf(l.bottleSize) === -1) return false;
+    if (filterState.jar.length && filterState.jar.indexOf(l.jarSize) === -1) return false;
     return true;
   });
 }
 
 function clearFilters() {
-  var fs = document.getElementById('fSearch'); if(fs) fs.value = '';
-  ['customer','product','status','bottle','jar'].forEach(function(id){ filterState[id]=[]; rebuildMsTrigger(id); });
+  var fs = document.getElementById('fSearch'); if (fs) fs.value = '';
+  ['customer','product','status','bottle','jar'].forEach(function(id){ filterState[id] = []; rebuildMsTrigger(id); });
   rebuildProductOptions();
   applyFilters();
 }
@@ -347,16 +384,17 @@ function exportDetailExcel() {
 // ─── Reset ────────────────────────────────────────────────────────────────
 
 function resetDashboard() {
+  closeMsPanel();
   topView = 'summary'; subView = 'today';
   selectedDayIdx = productionDays.length - 1;
   selectedWeekMon = null; selectedDetailRange = null;
   sortCol = 'date'; sortDir = -1; page = 1;
-  ['customer','product','status','bottle','jar'].forEach(function(id){ filterState[id]=[]; });
+  ['customer','product','status','bottle','jar'].forEach(function(id){ filterState[id] = []; });
   document.getElementById('btn-summary').style.cssText = navBtnStyle(true);
   document.getElementById('btn-detail').style.cssText = navBtnStyle(false);
   ['today','weekly','performance'].forEach(function(k){
-    var b = document.getElementById('btn-'+k);
-    if(b) b.style.cssText = navBtnStyle(k==='today');
+    var b = document.getElementById('btn-' + k);
+    if (b) b.style.cssText = navBtnStyle(k === 'today');
   });
   render();
   window.scrollTo(0, 0);
@@ -572,6 +610,7 @@ function navBtnStyle(isActive) {
 }
 
 function setTop(v) {
+  closeMsPanel();
   topView = v;
   document.getElementById('btn-summary').style.cssText = navBtnStyle(v==='summary');
   document.getElementById('btn-detail').style.cssText = navBtnStyle(v==='detail');
@@ -579,10 +618,11 @@ function setTop(v) {
 }
 
 function setSub(v) {
+  closeMsPanel();
   subView = v;
   ['today','weekly','performance'].forEach(function(k){
-    var btn = document.getElementById('btn-'+k);
-    if(btn) btn.style.cssText = navBtnStyle(k===v);
+    var btn = document.getElementById('btn-' + k);
+    if (btn) btn.style.cssText = navBtnStyle(k === v);
   });
   render();
 }
@@ -839,6 +879,7 @@ function closeDetailRangePicker() { var p = document.getElementById('detail-rang
 // ─── Render ───────────────────────────────────────────────────────────────
 
 function render() {
+  closeMsPanel();
   Object.values(charts).forEach(function(c){ try{c.destroy();}catch(e){} });
   charts = {};
   try {
@@ -1552,7 +1593,6 @@ if (sessionStorage.getItem('dtf_auth') === '1') {
   document.getElementById('main-app').style.display = 'block';
   loadDashboard();
 } else {
-  // Explicitly focus password field after page renders
   window.addEventListener('load', function(){
     var pw = document.getElementById('pw-input');
     if(pw) pw.focus();
