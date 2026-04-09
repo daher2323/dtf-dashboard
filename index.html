@@ -29,7 +29,20 @@
   .full-card { background: #1e2124; border: 0.5px solid #2c2c2a; border-radius: 12px; padding: 1rem; margin-bottom: 10px; }
   .full-card h3 { font-size: 11px; font-weight: 500; color: #888780; margin-bottom: .75rem; text-transform: uppercase; letter-spacing: .04em; }
   .filters { display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; margin-bottom: 1rem; padding-bottom: 2px; align-items: center; }
-  .filters select, .filters input { padding: 5px 7px; border: 0.5px solid #444441; border-radius: 8px; background: #1e2124; color: #e8e6e0; font-size: 12px; min-width: 0; }
+  .filters input[type=text] { padding: 5px 7px; border: 0.5px solid #444441; border-radius: 8px; background: #1e2124; color: #e8e6e0; font-size: 12px; min-width: 0; }
+  .ms-trigger { display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:8px;border:0.5px solid #444441;background:#1e2124;color:#888780;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0;height:28px;user-select:none; }
+  .ms-trigger.active { border-color:#378ADD;color:#e8e6e0; }
+  .ms-badge { background:#378ADD;color:#042C53;font-size:10px;font-weight:500;padding:1px 6px;border-radius:8px; }
+  .ms-panel { position:absolute;z-index:500;background:#1e2124;border:0.5px solid #444441;border-radius:10px;padding:8px;min-width:220px;top:34px;left:0; }
+  .ms-search { width:100%;padding:5px 8px;border:0.5px solid #444441;border-radius:6px;background:#141618;color:#e8e6e0;font-size:12px;margin-bottom:6px;outline:none; }
+  .ms-list { max-height:200px;overflow-y:auto; }
+  .ms-item { display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:12px;color:#e8e6e0;cursor:pointer; }
+  .ms-item:hover { background:#252829; }
+  .ms-chk { width:14px;height:14px;border-radius:3px;border:0.5px solid #444441;background:#141618;flex-shrink:0;display:flex;align-items:center;justify-content:center; }
+  .ms-chk.on { background:#0C447C;border-color:#378ADD; }
+  .ms-footer { border-top:0.5px solid #2c2c2a;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;align-items:center; }
+  .ms-count { font-size:11px;color:#5f5e5a; }
+  .ms-clear { font-size:11px;color:#378ADD;cursor:pointer;background:none;border:none;padding:0; }
   .filters select option { background: #1e2124; color: #e8e6e0; }
   .tbl-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -1324,23 +1337,23 @@ function renderDetail() {
   var bottleSizes = Array.from(new Set(sourceRows.map(function(r){ return r['Bottle Size']; }).filter(Boolean))).sort();
   var jarSizes    = Array.from(new Set(sourceRows.map(function(r){ return r['Jar Size']; }).filter(Boolean))).sort();
 
+  // Store options for use by panel renderer
+  window._msOptions = {
+    customer: customers, product: products, status: ['Complete','Partial'],
+    bottle: bottleSizes, jar: jarSizes
+  };
+  // Reset product options to respect any active customer filter
+  if((filterState.customer||[]).length) rebuildProductOptions();
+
   document.getElementById('content').innerHTML =
     navHTML
     +'<div class="filters">'
-    +'<input type="text" id="fSearch" placeholder="Search lot # or product\u2026" style="min-width:180px" oninput="applyFilters()">'
-    +'<select id="fCustomer" onchange="applyFilters()"><option value="">All customers</option>'
-    +customers.map(function(c){ return '<option value="'+c+'">'+c+'</option>'; }).join('')
-    +'</select>'
-    +'<select id="fProduct" onchange="applyFilters()"><option value="">All products</option>'
-    +products.map(function(p){ return '<option value="'+p+'">'+p+'</option>'; }).join('')
-    +'</select>'
-    +'<select id="fStatus" onchange="applyFilters()"><option value="">All statuses</option><option>Complete</option><option>Partial</option></select>'
-    +'<select id="fBottle" onchange="applyFilters()"><option value="">All bottle sizes</option>'
-    +bottleSizes.map(function(s){ return '<option value="'+s+'">'+s+'</option>'; }).join('')
-    +'</select>'
-    +'<select id="fJar" onchange="applyFilters()"><option value="">All jar sizes</option>'
-    +jarSizes.map(function(s){ return '<option value="'+s+'">'+s+'</option>'; }).join('')
-    +'</select>'
+    +'<input type="text" id="fSearch" placeholder="Search lot # or product\u2026" style="min-width:160px;height:28px;" oninput="applyFilters()">'
+    +buildMultiSelect('customer','Customer',customers,filterState.customer)
+    +buildMultiSelect('product','Product',products,filterState.product)
+    +buildMultiSelect('status','Status',['Complete','Partial'],filterState.status)
+    +buildMultiSelect('bottle','Bottle',bottleSizes,filterState.bottle)
+    +buildMultiSelect('jar','Jar size',jarSizes,filterState.jar)
     +'<button onclick="clearFilters()" style="font-size:12px;padding:5px 12px;border:0.5px solid #444441;border-radius:8px;background:transparent;cursor:pointer;color:#888780;flex-shrink:0;">Clear</button>'
     +'<button onclick="exportDetailExcel()" id="export-btn" style="font-size:12px;padding:5px 12px;border:1.5px solid #378ADD;border-radius:8px;background:#0C447C;cursor:pointer;color:#85B7EB;font-weight:500;display:inline-flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;"><svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#85B7EB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 1v7M3.5 5.5l3 3 3-3M2 11h9"/></svg><span id="export-count">Export</span></button>'
     +'</div>'
@@ -1351,8 +1364,7 @@ function renderDetail() {
     +'<div class="pagination"><button id="prevBtn" onclick="changePage(-1)">\u2190 Prev</button><span id="pageInfo"></span><button id="nextBtn" onclick="changePage(1)">Next \u2192</button><span id="rowCount" style="margin-left:auto"></span></div></div>';
 
   window._detailLotMap = scopedLotMap;
-  applyFilters();
-}
+  applyFilters();}
 
 function setDetailQuarter(q) { selectedDetailQuarter = q; renderDetail(); }
 function setDetailYear(y) { selectedDetailYear = y; renderDetail(); }
