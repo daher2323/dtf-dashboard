@@ -162,7 +162,10 @@ function toggleMsPanel(id) {
   panel.style.top = (rect.bottom + 4) + 'px';
   panel.style.left = rect.left + 'px';
   panel.innerHTML =
-    '<input class="ms-search" id="ms-search-'+id+'" placeholder="Search\u2026" oninput="filterMsList(\''+id+'\')">'
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
+    +'<input class="ms-search" id="ms-search-'+id+'" placeholder="Search\u2026" oninput="filterMsList(\''+id+'\')" style="flex:1;margin-right:6px;">'
+    +'<button onclick="closeAllMsPanels()" style="background:transparent;border:none;color:#888780;cursor:pointer;font-size:16px;line-height:1;padding:2px 4px;flex-shrink:0;">&#x2715;</button>'
+    +'</div>'
     +'<div class="ms-list" id="ms-list-'+id+'">'+renderMsItems(id, allOpts, selected, '')+'</div>'
     +'<div class="ms-footer"><span class="ms-count" id="ms-count-'+id+'">'+selected.length+' selected</span>'
     +'<button class="ms-clear" onclick="clearMsFilter(\''+id+'\')">Clear</button></div>';
