@@ -1653,8 +1653,8 @@ function renderPerformance() {
   var rangeYear = range.start.getFullYear();
   var compShift = (rangeYear === 2025) ? 1 : -1;
   var compLabel = (rangeYear === 2025) ? 'vs. same period in 2026' : 'vs. same period in prior year';
-  var compStart = new Date(range.start); compStart.setFullYear(compStart.getFullYear() + compShift);
-  var compEnd   = new Date(range.end);   compEnd.setFullYear(compEnd.getFullYear() + compShift);
+  var compStart = new Date(range.start.getTime()); compStart.setFullYear(rangeYear + compShift);
+  var compEnd   = new Date(range.end.getTime());   compEnd.setFullYear(range.end.getFullYear() + compShift);
   var rangeRows25 = allRowsCombined.filter(function(r){ var dt=new Date(r['Date']); return !isNaN(dt)&&dt>=compStart&&dt<=compEnd; });
 
   // Rebuild all metrics from ranged rows
