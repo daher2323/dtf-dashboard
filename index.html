@@ -500,13 +500,14 @@ function applyFreshData(res) {
   var newRows = parseCSV(res[0]).filter(isValid);
   var newRows25 = parseCSV(res[1]).filter(isValid);
   var newTargets = parseTargets(res[2]);
-  // Require meaningful data — reject if suspiciously sparse vs what we already have
-  var minRows = Math.max(10, Math.round(allRows.length * 0.5));
-  if (allRows.length > 0 && newRows.length < minRows) {
-    console.warn('Refresh aborted: ' + newRows.length + ' rows vs expected ~' + allRows.length);
+  if (newRows.length < 3) { console.warn('Refresh aborted: too few rows'); return false; }
+  // Never let a background refresh silently drop rows that are already displayed.
+  // Only accept if new data has at least as many rows as what is currently loaded,
+  // OR if the current data is empty (initial load).
+  if (allRows.length > 0 && newRows.length < allRows.length) {
+    console.warn('Refresh aborted: new data (' + newRows.length + ' rows) has fewer rows than current (' + allRows.length + '). Keeping existing data.');
     return false;
   }
-  if (newRows.length < 3) { console.warn('Refresh aborted: too few rows'); return false; }
   allRows = newRows; allRows25 = newRows25; dailyTargets = newTargets;
   // Build lotMap from both years so daily view lookups never fall back to raw row data
   lotMap = buildLotMap(allRows.concat(allRows25));
