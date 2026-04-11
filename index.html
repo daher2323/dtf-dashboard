@@ -2121,7 +2121,8 @@ function pctStr(a, b) { if (!b) return null; var p = (a-b)/b*100; return (p>=0?'
 function buildSynopsis(cd) {
   var sentences = [];
   var qtrs = cd.qtrs || [];
-  var completedQtrs = qtrs.filter(function(q){ return q.units > 0; });
+  var curQk = getQuarterKey(new Date());
+  var completedQtrs = qtrs.filter(function(q){ return q.units > 0 && q.key !== curQk; });
   var hasYoy = cd.ytd25 > 0;
   var ytdChg = hasYoy ? (cd.ytd - cd.ytd25) / cd.ytd25 * 100 : null;
   var ytdAvgRun   = cd.ytdLots   > 0 ? Math.round(cd.ytd   / cd.ytdLots)   : 0;
@@ -2287,7 +2288,7 @@ function computeCustomerData() {
     var qmap = custQtr[cust];
     var qtrs = displayQtrs.map(function(qk) {
       var d = qmap[qk];
-      if (!d || d.lots.size === 0) return {key:qk, units:0, lots:0, avgRun:0, freqDays:null};
+      if (!d || d.lots.size === 0) return {key:qk, units:0, lots:0, avgRun:0, freqDays:null, pctOfProd:null};
       var lotCount = d.lots.size;
       var avgRun = Math.round(d.units / lotCount);
       // Frequency: quarter length in days ÷ number of lots
