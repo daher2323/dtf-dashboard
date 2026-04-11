@@ -1448,6 +1448,9 @@ function renderWeekly() {
   var friEndFmt=wkFri.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
   var barPct=weeklyTarget?Math.min(Math.round((weekUnits/weeklyTarget)*100),100):0;
   var targetLabel=targetIsFullySet?'<span style="color:#1D9E75">(set)</span>':targetIsEstimated?'<span style="color:#EF9F27">(est.)</span>':'(avg)';
+  var chartStaticTarget = viewYear<=2025 ? WEEKLY_TARGET_2025 : WEEKLY_TARGET;
+  var week8NonZero=weeks8.filter(function(w){return w.units>0;});
+  var week8Avg=week8NonZero.length?Math.round(week8NonZero.reduce(function(s,w){return s+w.units;},0)/week8NonZero.length):0;
   var weekNavHTML='<div style="display:flex;align-items:center;gap:6px;flex-shrink:0;position:relative;" id="week-nav-anchor">'
     +'<button onclick="navWeek(-1)" style="width:28px;height:28px;flex-shrink:0;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:pointer;color:#e8e6e0;font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">&#8249;</button>'
     +'<div onclick="openWeekPicker()" style="text-align:center;width:260px;flex-shrink:0;cursor:pointer;padding:4px 12px;border-radius:8px;border:0.5px solid #444441;background:transparent;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'transparent\'">'
@@ -1485,10 +1488,7 @@ function renderWeekly() {
 
   var weekLabels=weeks8.map(function(w){return w.mon.toDateString()===wkMon.toDateString()?'Wk '+w.num+' (this)':'Wk '+w.num;});
   var weekData=weeks8.map(function(w){return w.units;});
-  var weekColors=weeks8.map(function(w){return w.mon.toDateString()===wkMon.toDateString()?'rgba(55,138,221,0.35)':'#378ADD';});
-  var chartStaticTarget = viewYear<=2025 ? WEEKLY_TARGET_2025 : WEEKLY_TARGET;
-  var week8NonZero=weekData.filter(function(v){return v>0;});
-  var week8Avg=week8NonZero.length?Math.round(week8NonZero.reduce(function(s,v){return s+v;},0)/week8NonZero.length):0;
+  var weekColors=weeks8.map(function(w){return w.mon.toDateString()===wkMon.toDateString()?'rgba(55,138,221,0.35)':'#378ADD';}); 
   charts.weeklyW=new Chart(document.getElementById('cWeeklyW'),{
     type:'bar',
     data:{labels:weekLabels,datasets:[
