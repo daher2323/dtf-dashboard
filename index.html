@@ -10,10 +10,30 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, sans-serif; background: #141618; color: #e8e6e0; font-size: 14px; min-height: 100vh; }
   .shell { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
-  .top-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; position: sticky; top: 0; z-index: 100; background: #141618; padding: 1rem 1.5rem; margin: 0 -1.5rem 1.5rem; border-bottom: 0.5px solid #2c2c2a; }
-  .brand { display: flex; align-items: center; gap: 14px; }
-  .brand-name { font-size: 20px; font-weight: 500; color: #e8e6e0; line-height: 1.2; }
-  .brand-sub { font-size: 13px; color: #888780; margin-top: 3px; }
+
+  /* ── App bar ── */
+  .app-bar { display: flex; align-items: stretch; background: #141618; border-bottom: 0.5px solid #2c2c2a; padding: 0 1.5rem; min-height: 56px; position: sticky; top: 0; z-index: 100; }
+  .brand-wrap { display: flex; align-items: center; gap: 10px; padding: 8px 20px 8px 0; margin-right: 8px; border-right: 0.5px solid #2c2c2a; flex-shrink: 0; cursor: pointer; }
+  .brand-wrap:hover { opacity: .85; }
+  .brand-name { font-size: 17px; font-weight: 500; color: #e8e6e0; line-height: 1.2; }
+  .brand-sub { font-size: 11px; color: #888780; }
+  .main-tabs { display: flex; align-items: center; gap: 4px; padding: 10px 0; flex: 1; }
+  .main-tab { display: flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: all .15s; white-space: nowrap; border: 1.5px solid transparent; user-select: none; }
+  .main-tab.on { background: #0C2240; border-color: #1D5A99; }
+  .main-tab:not(.on) { color: #5f5e5a; }
+  .main-tab:not(.on):hover { background: #1a1d20; color: #888780; }
+  .main-tab-icon { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .15s; }
+  .main-tab.on .main-tab-icon { background: #0C447C; border: 0.5px solid #378ADD; }
+  .main-tab:not(.on) .main-tab-icon { background: #1e2124; border: 0.5px solid #2c2c2a; }
+  .main-tab-name { font-size: 12px; font-weight: 500; }
+  .main-tab.on .main-tab-name { color: #e8e6e0; }
+  .main-tab:not(.on) .main-tab-name { color: #5f5e5a; }
+  .app-bar-right { display: flex; align-items: center; gap: 8px; padding-left: 16px; border-left: 0.5px solid #2c2c2a; margin-left: auto; flex-shrink: 0; }
+
+  /* ── Sub-bar ── */
+  .sub-bar { display: flex; align-items: center; justify-content: flex-start; gap: 8px; padding: .5rem 1.5rem; background: #0d1118; border-bottom: 0.5px solid #1a2030; position: sticky; top: 56px; z-index: 99; }
+  .sub-divider { width: 0.5px; height: 20px; background: #2c2c2a; flex-shrink: 0; }
+
   .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 1.25rem; }
   .metric { background: #1e2124; border: 0.5px solid #2c2c2a; border-radius: 10px; padding: 1rem; }
   .metric .label { font-size: 11px; color: #888780; margin-bottom: 5px; text-transform: uppercase; letter-spacing: .03em; }
@@ -85,30 +105,38 @@
 </div>
 
 <div id="main-app" style="display:none">
-<div class="shell">
-  <div class="top-bar">
-    <div class="brand">
-      <div onclick="resetDashboard()" style="display:flex;align-items:center;gap:14px;cursor:pointer;" title="Return to home">
-        <svg width="54" height="54" viewBox="0 0 54 54" style="flex-shrink:0"><rect x="2" y="2" width="50" height="50" rx="10" fill="#0C447C" stroke="#378ADD" stroke-width="1.5"/><text x="27" y="35" text-anchor="middle" font-size="20" font-weight="700" fill="#85B7EB" font-family="system-ui,sans-serif" letter-spacing="-1">DTF</text></svg>
-        <div>
-          <div class="brand-name">Dynamic Technical Formulations</div>
-          <div class="brand-sub">Production Hub</div>
-        </div>
-      </div>
+
+<!-- App bar -->
+<div class="app-bar">
+  <div class="brand-wrap" onclick="resetDashboard()" title="Return to home">
+    <svg width="38" height="38" viewBox="0 0 54 54" style="flex-shrink:0"><rect x="2" y="2" width="50" height="50" rx="10" fill="#0C447C" stroke="#378ADD" stroke-width="1.5"/><text x="27" y="35" text-anchor="middle" font-size="20" font-weight="700" fill="#85B7EB" font-family="system-ui,sans-serif" letter-spacing="-1">DTF</text></svg>
+    <div><div class="brand-name">Dynamic Technical Formulations</div><div class="brand-sub">Production Hub</div></div>
+  </div>
+  <div class="main-tabs">
+    <div class="main-tab on" id="mtab-production" onclick="setMainSection('production')">
+      <div class="main-tab-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#85B7EB" stroke-width="1.4" stroke-linecap="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg></div>
+      <span class="main-tab-name">Production</span>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="display:flex;gap:2px;padding:3px;background:#1e2124;border:0.5px solid #2c2c2a;border-radius:8px;">
-        <button onclick="setTop('summary')" id="btn-summary" style="padding:5px 16px;border-radius:6px;border:1.5px solid #378ADD;background:#0C447C;color:#85B7EB;font-weight:500;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Summary</button>
-        <button onclick="setTop('detail')" id="btn-detail" style="padding:5px 16px;border-radius:6px;border:1.5px solid transparent;background:transparent;color:#888780;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Detail</button>
-      </div>
-      <div style="width:0.5px;height:28px;background:#2c2c2a;flex-shrink:0;" id="sub-nav-divider"></div>
-      <div style="display:flex;gap:2px;padding:3px;background:#1e2124;border:0.5px solid #2c2c2a;border-radius:8px;" id="sub-nav">
-        <button onclick="setSub('today')" id="btn-today" style="padding:5px 16px;border-radius:6px;border:1.5px solid #378ADD;background:#0C447C;color:#85B7EB;font-weight:500;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Daily</button>
-        <button onclick="setSub('weekly')" id="btn-weekly" style="padding:5px 16px;border-radius:6px;border:1.5px solid transparent;background:transparent;color:#888780;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Weekly</button>
-        <button onclick="setSub('performance')" id="btn-performance" style="padding:5px 16px;border-radius:6px;border:1.5px solid transparent;background:transparent;color:#888780;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;">Trend</button>
-      </div>
+    <div class="main-tab" id="mtab-customers" onclick="setMainSection('customers')">
+      <div class="main-tab-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#444441" stroke-width="1.4" stroke-linecap="round"><circle cx="6" cy="5" r="2.2"/><circle cx="11" cy="5" r="2.2"/><path d="M1 13c0-2 1.8-3.5 5-3.5"/><path d="M15 13c0-2-1.8-3.5-4-3.5"/></svg></div>
+      <span class="main-tab-name">Customers</span>
+    </div>
+    <div class="main-tab" id="mtab-procurement" onclick="setMainSection('procurement')">
+      <div class="main-tab-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#444441" stroke-width="1.4" stroke-linecap="round"><path d="M3 13V8m3 5V5m3 8V7m3 6V3"/></svg></div>
+      <span class="main-tab-name">Procurement</span>
     </div>
   </div>
+  <div class="app-bar-right" id="app-bar-right">
+    <!-- sub-nav injected here by renderSubBar() -->
+  </div>
+</div>
+
+<!-- Sub-bar -->
+<div class="sub-bar" id="sub-bar">
+  <!-- injected by renderSubBar() -->
+</div>
+
+<div class="shell">
   <div id="loading" class="loading">Loading production data...</div>
   <div id="content" style="display:none"></div>
 </div>
@@ -131,6 +159,7 @@ var LINE_TXT   = {'line#1':'#85B7EB','line#2':'#AFA9EC','line#4':'#ED93B1'};
 var LINE_TYPE  = {'line#1':'Powder','line#2':'Capsules','line#4':'Powder'};
 
 var allRows = [], allRows25 = [], lotMap = {}, dailyTargets = {};
+var mainSection = 'production'; // 'production' | 'customers' | 'procurement'
 var topView = 'summary', subView = 'today';
 var sortCol = 'date', sortDir = -1, page = 1, PAGE_SIZE = 50;
 var custLimit = 10;
@@ -343,19 +372,14 @@ function exportDetailExcel() {
 
 function resetDashboard() {
   closeMsPanel();
+  mainSection = 'production';
   topView = 'summary'; subView = 'today';
   selectedDayIdx = productionDays.length - 1;
   selectedWeekMon = null; selectedDetailRange = null; selectedPerfRange = null;
   sortCol = 'date'; sortDir = -1; page = 1;
   custLimit = 10;
   ['customer','product','status','bottle','jar'].forEach(function(id){ filterState[id] = []; });
-  document.getElementById('btn-summary').style.cssText = navBtnStyle(true);
-  document.getElementById('btn-detail').style.cssText = navBtnStyle(false);
-  ['today','weekly','performance'].forEach(function(k){
-    var b = document.getElementById('btn-' + k);
-    if (b) b.style.cssText = navBtnStyle(k === 'today');
-  });
-  render();
+  setMainSection('production');
   window.scrollTo(0, 0);
 }
 
@@ -550,6 +574,7 @@ function loadDashboard() {
     lastRefreshTime = Date.now();
     document.getElementById('loading').style.display = 'none';
     document.getElementById('content').style.display = 'block';
+    renderSubBar();
     render();
     startRefreshTimers();
   }).catch(function(e){
@@ -627,24 +652,70 @@ function startRefreshTimers() {
 }
 
 function navBtnStyle(isActive) {
-  return 'padding:5px 16px;border-radius:6px;border:'+(isActive?'1.5px solid #378ADD':'1.5px solid transparent')+';background:'+(isActive?'#0C447C':'transparent')+';color:'+(isActive?'#85B7EB':'#888780')+';font-weight:'+(isActive?'500':'400')+';font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;';
+  return 'padding:4px 14px;border-radius:6px;border:'+(isActive?'1.5px solid #378ADD':'1.5px solid transparent')+';background:'+(isActive?'#0C447C':'transparent')+';color:'+(isActive?'#85B7EB':'#888780')+';font-weight:'+(isActive?'500':'400')+';font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;';
+}
+
+// ── Main section switcher ─────────────────────────────────────────────────
+
+function setMainSection(s) {
+  closeMsPanel();
+  mainSection = s;
+  ['production','customers','procurement'].forEach(function(k) {
+    var t = document.getElementById('mtab-' + k);
+    if (!t) return;
+    var isOn = k === s;
+    t.className = 'main-tab' + (isOn ? ' on' : '');
+    var ico = t.querySelector('.main-tab-icon');
+    if (ico) {
+      var svgs = { production:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="'+(isOn?'#85B7EB':'#444441')+'" stroke-width="1.4" stroke-linecap="round"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>', customers:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="'+(isOn?'#85B7EB':'#444441')+'" stroke-width="1.4" stroke-linecap="round"><circle cx="6" cy="5" r="2.2"/><circle cx="11" cy="5" r="2.2"/><path d="M1 13c0-2 1.8-3.5 5-3.5"/><path d="M15 13c0-2-1.8-3.5-4-3.5"/></svg>', procurement:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="'+(isOn?'#85B7EB':'#444441')+'" stroke-width="1.4" stroke-linecap="round"><path d="M3 13V8m3 5V5m3 8V7m3 6V3"/></svg>' };
+      ico.innerHTML = svgs[k] || '';
+    }
+  });
+  renderSubBar();
+  render();
+}
+
+// ── Sub-bar renderer ──────────────────────────────────────────────────────
+
+function renderSubBar() {
+  var sb = document.getElementById('sub-bar');
+  var abr = document.getElementById('app-bar-right');
+  if (!sb) return;
+
+  // Live pill always in app-bar-right
+  var isLive = (mainSection === 'production') && isViewingLive && typeof isViewingLive === 'function' && isViewingLive();
+  if (abr) abr.innerHTML = isLive ? '<span style="font-size:10px;color:#1D9E75;font-weight:500;padding:3px 10px;border-radius:10px;background:#085041;white-space:nowrap;">&#8635; Live</span>' : '';
+
+  if (mainSection === 'production') {
+    sb.innerHTML =
+      '<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
+      + '<button onclick="setTop(\'summary\')" id="btn-summary" style="'+navBtnStyle(topView==='summary')+'">Summary</button>'
+      + '<button onclick="setTop(\'detail\')" id="btn-detail" style="'+navBtnStyle(topView==='detail')+'">Detail</button>'
+      + '</div>'
+      + '<div class="sub-divider"></div>'
+      + '<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
+      + '<button onclick="setSub(\'today\')" id="btn-today" style="'+navBtnStyle(subView==='today')+'">Daily</button>'
+      + '<button onclick="setSub(\'weekly\')" id="btn-weekly" style="'+navBtnStyle(subView==='weekly')+'">Weekly</button>'
+      + '<button onclick="setSub(\'performance\')" id="btn-performance" style="'+navBtnStyle(subView==='performance')+'">Trend</button>'
+      + '</div>';
+  } else if (mainSection === 'customers') {
+    sb.innerHTML = '<div style="font-size:11px;color:#5f5e5a;font-style:italic;">Coming soon</div>';
+  } else if (mainSection === 'procurement') {
+    sb.innerHTML = '<div style="font-size:11px;color:#5f5e5a;font-style:italic;">Coming soon</div>';
+  }
 }
 
 function setTop(v) {
   closeMsPanel();
   topView = v;
-  document.getElementById('btn-summary').style.cssText = navBtnStyle(v==='summary');
-  document.getElementById('btn-detail').style.cssText = navBtnStyle(v==='detail');
+  renderSubBar();
   render();
 }
 
 function setSub(v) {
   closeMsPanel();
   subView = v;
-  ['today','weekly','performance'].forEach(function(k){
-    var btn = document.getElementById('btn-' + k);
-    if (btn) btn.style.cssText = navBtnStyle(k === v);
-  });
+  renderSubBar();
   render();
 }
 
@@ -1017,7 +1088,18 @@ function render() {
   closeMsPanel();
   Object.values(charts).forEach(function(c){ try{c.destroy();}catch(e){} });
   charts = {};
+  // Update live pill on every render
+  var abr = document.getElementById('app-bar-right');
+  if (abr) abr.innerHTML = (mainSection==='production' && isViewingLive()) ? '<span style="font-size:10px;color:#1D9E75;font-weight:500;padding:3px 10px;border-radius:10px;background:#085041;white-space:nowrap;">&#8635; Live</span>' : '';
   try {
+    if (mainSection === 'customers') {
+      document.getElementById('content').innerHTML = '<div style="padding:3rem;text-align:center;color:#888780;font-size:13px;">Customer view coming soon</div>';
+      return;
+    }
+    if (mainSection === 'procurement') {
+      document.getElementById('content').innerHTML = '<div style="padding:3rem;text-align:center;color:#888780;font-size:13px;">Procurement view coming soon</div>';
+      return;
+    }
     if (topView==='detail') renderDetail();
     else if (subView==='today') renderToday();
     else if (subView==='weekly') renderWeekly();
