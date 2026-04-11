@@ -705,12 +705,7 @@ function renderSubBar() {
       + '<button onclick="setSub(\'performance\')" id="btn-performance" style="'+navBtnStyle(subView==='performance')+'">Trend</button>'
       + '</div>';
   } else if (mainSection === 'customers') {
-    sb.innerHTML =
-      '<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
-      + '<button onclick="setCustLimit(10)" style="'+navBtnStyle(custLimit===10)+'">Top 10</button>'
-      + '<button onclick="setCustLimit(25)" style="'+navBtnStyle(custLimit===25)+'">Top 25</button>'
-      + '<button onclick="setCustLimit(0)" style="'+navBtnStyle(custLimit===0)+'">All</button>'
-      + '</div>';
+    sb.innerHTML = '';
   } else if (mainSection === 'procurement') {
     sb.innerHTML = '<div style="font-size:11px;color:#5f5e5a;font-style:italic;">Coming soon</div>';
   }
@@ -2055,26 +2050,7 @@ function renderPerformance() {
     +'</tr></thead><tbody>'+linesHTML+'</tbody></table></div>'
     +'<div class="chart-card"><h3>Powder product mix \u2014 units by jar size</h3><div style="display:flex;align-items:center;gap:12px"><div style="position:relative;height:200px;min-width:200px;flex-shrink:0"><canvas id="cJar"></canvas></div><div id="jar-legend" style="flex:1;overflow-y:auto"></div></div></div></div>'
     +'<div class="full-card"><h3>Units produced by month vs. target</h3><div class="tbl-wrap"><table><thead><tr><th>Month</th><th style="text-align:right">Actual <span style="color:#5f5e5a;font-weight:400">('+compYearLabel+' actual)</span></th><th style="text-align:right">Target</th><th style="text-align:right">% of target</th><th></th><th style="text-align:right">vs '+compYearLabel+'</th></tr></thead><tbody>'+monthHTML+'</tbody></table>'+asterisk+'</div></div>'
-    +recordsCardHTML
-    +'<div class="full-card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:8px;">'
-    +'<h3 style="margin:0;">Customers by units produced <span style="color:#5f5e5a;font-weight:400;font-size:10px;">('+allCustSorted.length+' total)</span></h3>'
-    +'<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
-    +'<button onclick="setCustLimit(10)" style="padding:4px 12px;border-radius:6px;border:'+(custLimit===10?'1.5px solid #378ADD':'1.5px solid transparent')+';background:'+(custLimit===10?'#0C447C':'transparent')+';color:'+(custLimit===10?'#85B7EB':'#888780')+';font-size:11px;font-weight:'+(custLimit===10?'500':'400')+';cursor:pointer;font-family:system-ui;">Top 10</button>'
-    +'<button onclick="setCustLimit(25)" style="padding:4px 12px;border-radius:6px;border:'+(custLimit===25?'1.5px solid #378ADD':'1.5px solid transparent')+';background:'+(custLimit===25?'#0C447C':'transparent')+';color:'+(custLimit===25?'#85B7EB':'#888780')+';font-size:11px;font-weight:'+(custLimit===25?'500':'400')+';cursor:pointer;font-family:system-ui;">Top 25</button>'
-    +'<button onclick="setCustLimit(0)" style="padding:4px 12px;border-radius:6px;border:'+(custLimit===0?'1.5px solid #378ADD':'1.5px solid transparent')+';background:'+(custLimit===0?'#0C447C':'transparent')+';color:'+(custLimit===0?'#85B7EB':'#888780')+';font-size:11px;font-weight:'+(custLimit===0?'500':'400')+';cursor:pointer;font-family:system-ui;">All</button>'
-    +'</div></div>'
-    +'<div class="tbl-wrap"><table><thead><tr>'
-    +'<th style="width:24px">#</th>'
-    +'<th>Customer</th>'
-    +'<th style="text-align:right">Units produced *</th>'
-    +'<th style="width:90px"></th>'
-    +'<th style="text-align:right">vs '+compYearLabel+'</th>'
-    +'<th style="text-align:right">Lots *</th>'
-    +'<th style="text-align:right">Avg run size *</th>'
-    +'<th style="text-align:right">% of production *</th>'
-    +'</tr></thead><tbody>'+custHTML+'</tbody></table>'
-    +'<div style="font-size:10px;color:#5f5e5a;margin-top:10px;padding-top:8px;border-top:0.5px solid #2c2c2a;">* Values in parentheses show '+compYearLabel+' actuals for the same period. A dash (\u2014) means no production activity for that customer during the same date window in '+compYearLabel+'.</div>'
-    +'</div></div>';
+    +recordsCardHTML;
 
   document.getElementById('jar-legend').innerHTML='<table style="width:100%;border-collapse:collapse;font-size:11px"><tbody>'+jarLegHTML+'</tbody></table>';
   charts.jar=new Chart(document.getElementById('cJar'),{type:'doughnut',data:{labels:jarEntries.map(function(e){return e[0];}),datasets:[{data:jarEntries.map(function(e){return e[1];}),backgroundColor:JAR_COLORS,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){var v=ctx.raw,p=jarTotal?((v/jarTotal)*100).toFixed(1):0;return v.toLocaleString()+' units ('+p+'%)';}}}}}});
@@ -2207,7 +2183,11 @@ function renderCustomers() {
     +'</div>'
     +'<div class="full-card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:8px;">'
     +'<h3 style="margin:0;">Customers by units produced <span style="color:#5f5e5a;font-weight:400;font-size:10px;">('+allCustSorted.length+' total)</span></h3>'
-    +'</div>'
+    +'<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
+    +'<button onclick="setCustLimit(10)" style="'+navBtnStyle(custLimit===10)+'">Top 10</button>'
+    +'<button onclick="setCustLimit(25)" style="'+navBtnStyle(custLimit===25)+'">Top 25</button>'
+    +'<button onclick="setCustLimit(0)" style="'+navBtnStyle(custLimit===0)+'">All</button>'
+    +'</div></div>'
     +'<div class="tbl-wrap"><table><thead><tr>'
     +'<th style="width:24px">#</th>'
     +'<th>Customer</th>'
