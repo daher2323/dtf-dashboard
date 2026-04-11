@@ -2155,8 +2155,14 @@ function generateSynopsis(safeId) {
       + ' (' + n(cd.ytd25) + ' → ' + n(cd.ytd) + ' units)'
       + (cd.ytdPct != null ? ', now ' + cd.ytdPct + '% of our production' : '') + '.');
   } else {
-    // No same-period YoY comparison available (customer started mid-year)
-    sentences.push(cd.name + ' came on board mid-last-year — we\'ve run '
+    // No same-period YoY comparison — customer started mid-year last year
+    // Find their first quarter with production
+    var firstQtr = null;
+    for (var fi = 0; fi < cd.qtrs.length; fi++) {
+      if (cd.qtrs[fi].units > 0) { firstQtr = cd.qtrs[fi]; break; }
+    }
+    var whenJoined = firstQtr ? 'in ' + firstQtr.label : 'mid-last-year';
+    sentences.push(cd.name + ' came on board ' + whenJoined + ' — we\'ve run '
       + n(cd.ytd) + ' units across ' + cd.ytdLots + ' lot' + (cd.ytdLots !== 1 ? 's' : '') + ' so far this year'
       + (cd.ytdPct != null ? ', making up ' + cd.ytdPct + '% of our production YTD' : '') + '.');
   }
