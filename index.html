@@ -2190,12 +2190,17 @@ function computeCustomerData() {
     var ytd25cutoff = new Date(now.getFullYear()-1, now.getMonth(), now.getDate(), 23, 59, 59);
     var ytd25start  = new Date(now.getFullYear()-1, 0, 1);
     var ytd25 = 0;
+    var ytdLots25Set = new Set();
     allRowsCombined.forEach(function(r) {
       var p2 = (r['Product']||'').trim(); if (!p2) return;
       var c2 = p2.split('-')[0].trim(); if (c2 !== cust) return;
       var dt2 = new Date(r['Date']); if (isNaN(dt2)) return;
-      if (dt2 >= ytd25start && dt2 <= ytd25cutoff) ytd25 += num(r['Final Units']);
+      if (dt2 >= ytd25start && dt2 <= ytd25cutoff) {
+        ytd25 += num(r['Final Units']);
+        var lot2 = (r['Lot Number']||'').trim(); if (lot2) ytdLots25Set.add(lot2);
+      }
     });
+    var ytdLots25 = ytdLots25Set.size;
 
     // Tag: compare last full quarter to prev full quarter (skip current partial)
     var completedWithData = withData.filter(function(q){return q.key !== curQk;});
@@ -2210,7 +2215,7 @@ function computeCustomerData() {
     }
 
     var annuals = custAnnual[cust] || {};
-    results.push({cust:cust, qtrs:qtrs, tag:tag, ytd:ytd, ytd25:ytd25, ytdLots:ytdLots, annuals:annuals, withData:withData});
+    results.push({cust:cust, qtrs:qtrs, tag:tag, ytd:ytd, ytd25:ytd25, ytdLots:ytdLots, ytdLots25:ytdLots25, annuals:annuals, withData:withData});
   });
 
   // Sort by YTD units descending
@@ -2259,7 +2264,11 @@ function renderCustomerOverview(healthData) {
       +tagEl
       +'<span style="font-size:11px;color:#5f5e5a;margin-left:4px;">'+annualPills+'</span>'
       +'<div style="margin-left:auto;display:flex;align-items:center;gap:14px;flex-shrink:0;">'
-        +'<span style="font-size:11px;color:#888780;">'+cd.ytdLots+' lots YTD</span>'
+        +'<span style="font-size:11px;color:#888780;white-space:nowrap;">'
+          +(cd.ytdLots25 > 0 ? cd.ytdLots25+' → ' : '')
+          +'<strong style="font-weight:500;color:#e8e6e0;">'+cd.ytdLots+'</strong>'
+          +' lots YTD'
+        +'</span>'
       +'</div>'
     +'</div>';
 
