@@ -2184,6 +2184,17 @@ function computeCustomerData() {
     var ytdLots = 0;
     qtrs.forEach(function(q){ if (q.key.startsWith(nowYr+'-')) ytdLots += q.lots; });
 
+    // YTD 2025: same month/day cutoff as today but in 2025
+    var ytd25cutoff = new Date(now.getFullYear()-1, now.getMonth(), now.getDate(), 23, 59, 59);
+    var ytd25start  = new Date(now.getFullYear()-1, 0, 1);
+    var ytd25 = 0;
+    allRowsCombined.forEach(function(r) {
+      var p2 = (r['Product']||'').trim(); if (!p2) return;
+      var c2 = p2.split('-')[0].trim(); if (c2 !== cust) return;
+      var dt2 = new Date(r['Date']); if (isNaN(dt2)) return;
+      if (dt2 >= ytd25start && dt2 <= ytd25cutoff) ytd25 += num(r['Final Units']);
+    });
+
     // Tag: compare last full quarter to prev full quarter (skip current partial)
     var completedWithData = withData.filter(function(q){return q.key !== curQk;});
     var tag = 'new';
@@ -2197,7 +2208,7 @@ function computeCustomerData() {
     }
 
     var annuals = custAnnual[cust] || {};
-    results.push({cust:cust, qtrs:qtrs, tag:tag, ytd:ytd, ytdLots:ytdLots, annuals:annuals, withData:withData});
+    results.push({cust:cust, qtrs:qtrs, tag:tag, ytd:ytd, ytd25:ytd25, ytdLots:ytdLots, annuals:annuals, withData:withData});
   });
 
   // Sort by YTD units descending
@@ -2211,9 +2222,6 @@ function renderCustomerOverview(healthData) {
   var curQk = healthData.curQk;
   var now = new Date();
   var nowYr = now.getFullYear();
-  var years = [];
-  var yy = 2025;
-  while (yy <= nowYr) { years.push(yy); yy++; }
 
   var thStyle = 'text-align:right;padding:5px 10px;font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;border-bottom:0.5px solid #2c2c2a;white-space:nowrap;';
   var thStyleL = 'text-align:left;padding:5px 10px;font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;border-bottom:0.5px solid #2c2c2a;white-space:nowrap;';
@@ -2228,14 +2236,19 @@ function renderCustomerOverview(healthData) {
     else if (cd.tag==='flat') tagEl='<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:6px;background:#2c2c2a;color:#888780;">→ Flat</span>';
     else tagEl='<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:6px;background:#0C447C;color:#85B7EB;">New</span>';
 
-    // Annual summary pills
-    var annualPills = years.map(function(yr) {
-      var v = cd.annuals[yr]||0;
-      var isCur = yr === nowYr;
-      if (!v) return '';
-      return '<span style="font-size:11px;color:'+(isCur?'#378ADD':'#888780')+';white-space:nowrap;">'
-        +yr+': <strong style="font-weight:500;color:'+(isCur?'#e8e6e0':'#888780')+'">'+v.toLocaleString()+'</strong>'+(isCur?' YTD':'')+'</span>';
-    }).filter(Boolean).join('<span style="color:#2c2c2a;margin:0 6px;">·</span>');
+    // Apples-to-apples: both years same date range
+    var prevYr = nowYr - 1;
+    var ytdDeltaPct = cd.ytd25 > 0 ? ((cd.ytd - cd.ytd25) / cd.ytd25 * 100) : null;
+    var deltaPos = ytdDeltaPct !== null && ytdDeltaPct >= 0;
+    var deltaBadge = ytdDeltaPct !== null
+      ? ' <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:500;background:'+(deltaPos?'#085041':'#791F1F')+';color:'+(deltaPos?'#9FE1CB':'#F09595')+'">'+(deltaPos?'+':'')+ytdDeltaPct.toFixed(1)+'%</span>'
+      : '';
+    var ytdLabel = now.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    var annualPills = (cd.ytd25 > 0 ? '<span style="font-size:11px;color:#888780;white-space:nowrap;">'+prevYr+' YTD: <strong style="font-weight:500;color:#888780;">'+cd.ytd25.toLocaleString()+'</strong></span>'
+      + '<span style="color:#2c2c2a;margin:0 6px;">·</span>' : '')
+      + '<span style="font-size:11px;color:#378ADD;white-space:nowrap;">'+nowYr+' YTD: <strong style="font-weight:500;color:#e8e6e0;">'+cd.ytd.toLocaleString()+'</strong></span>'
+      + deltaBadge
+      + '<span style="font-size:10px;color:#5f5e5a;margin-left:4px;">thru '+ytdLabel+'</span>';
 
     // Header row (always visible)
     var header = '<div onclick="toggleCH(\''+sid+'\')" style="display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;background:#1e2124;border-radius:10px;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'#1e2124\'">'
@@ -2245,7 +2258,6 @@ function renderCustomerOverview(healthData) {
       +'<span style="font-size:11px;color:#5f5e5a;margin-left:4px;">'+annualPills+'</span>'
       +'<div style="margin-left:auto;display:flex;align-items:center;gap:14px;flex-shrink:0;">'
         +'<span style="font-size:11px;color:#888780;">'+cd.ytdLots+' lots YTD</span>'
-        +'<span style="font-size:13px;font-weight:500;color:#e8e6e0;">'+cd.ytd.toLocaleString()+' <span style="font-size:10px;font-weight:400;color:#5f5e5a;">YTD units</span></span>'
       +'</div>'
     +'</div>';
 
