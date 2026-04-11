@@ -2154,6 +2154,11 @@ function generateSynopsis(safeId) {
     sentences.push(cd.name + ' is ' + tone + ' ' + mag.toFixed(1) + '% YTD vs. the same period last year'
       + ' (' + n(cd.ytd25) + ' → ' + n(cd.ytd) + ' units)'
       + (cd.ytdPct != null ? ', now ' + cd.ytdPct + '% of our production' : '') + '.');
+  } else {
+    // No same-period YoY comparison available (customer started mid-year)
+    sentences.push(cd.name + ' came on board mid-last-year — we\'ve run '
+      + n(cd.ytd) + ' units across ' + cd.ytdLots + ' lot' + (cd.ytdLots !== 1 ? 's' : '') + ' so far this year'
+      + (cd.ytdPct != null ? ', making up ' + cd.ytdPct + '% of our production YTD' : '') + '.');
   }
 
   // ── Sentence 2: run size / lot count dynamic ──
@@ -2188,17 +2193,17 @@ function generateSynopsis(safeId) {
     var allUp = last3[2].units > last3[1].units && last3[1].units > last3[0].units;
     var allDn = last3[2].units < last3[1].units && last3[1].units < last3[0].units;
     if (allUp) {
-      sentences.push('Volume has grown in each of the last three completed quarters ('
+      sentences.push('Their volume has grown in each of the last three completed quarters ('
         + n(last3[0].units) + ' → ' + n(last3[1].units) + ' → ' + n(last3[2].units) + ' units).');
     } else if (allDn) {
-      sentences.push('Volume has declined in each of the last three completed quarters ('
+      sentences.push('Their volume has declined in each of the last three completed quarters ('
         + n(last3[0].units) + ' → ' + n(last3[1].units) + ' → ' + n(last3[2].units) + ' units).');
     } else if (completed.length >= 2) {
       var prev = completed[completed.length - 2];
       var last = completed[completed.length - 1];
       var qChg = (last.units - prev.units) / prev.units * 100;
       if (Math.abs(qChg) > 10) {
-        sentences.push(last.label + ' (the most recent completed quarter) was '
+        sentences.push('Their most recent completed quarter (' + last.label + ') was '
           + (qChg > 0 ? 'up' : 'down') + ' ' + Math.abs(qChg).toFixed(1) + '% vs. ' + prev.label
           + ' (' + n(prev.units) + ' → ' + n(last.units) + ' units).');
       }
@@ -2207,8 +2212,8 @@ function generateSynopsis(safeId) {
     var prev2 = completed[0], last2 = completed[1];
     var qChg2 = (last2.units - prev2.units) / prev2.units * 100;
     if (Math.abs(qChg2) > 10) {
-      sentences.push(last2.label + ' was ' + (qChg2 > 0 ? 'up' : 'down')
-        + ' ' + Math.abs(qChg2).toFixed(1) + '% vs. ' + prev2.label
+      sentences.push('Their most recent completed quarter (' + last2.label + ') was '
+        + (qChg2 > 0 ? 'up' : 'down') + ' ' + Math.abs(qChg2).toFixed(1) + '% vs. ' + prev2.label
         + ' (' + n(prev2.units) + ' → ' + n(last2.units) + ' units).');
     }
   }
