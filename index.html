@@ -2248,6 +2248,7 @@ function renderCustomerOverview(healthData) {
   var prevYr = nowYr - 1;
   var ytdLabel = now.toLocaleDateString('en-US',{month:'short',day:'numeric'});
   var maxYtd = Math.max.apply(null, customers.map(function(c){return Math.max(c.ytd, c.ytd25);})) || 1;
+  var visibleCustomers = custLimit === 0 ? customers : customers.slice(0, custLimit);
 
   var thS  = 'text-align:right;padding:5px 10px;font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;border-bottom:0.5px solid #2c2c2a;white-space:nowrap;';
   var thSL = 'text-align:left;padding:5px 10px;font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;border-bottom:0.5px solid #2c2c2a;white-space:nowrap;';
@@ -2258,7 +2259,7 @@ function renderCustomerOverview(healthData) {
     return '<span style="display:inline-block;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:500;'+(ml?'margin-left:5px;':'')+'background:'+(pos?'#085041':'#791F1F')+';color:'+(pos?'#9FE1CB':'#F09595')+'">'+(pos?'+':'')+p.toFixed(1)+'%</span>';
   }
 
-  var rows = customers.map(function(cd) {
+  var rows = visibleCustomers.map(function(cd) {
     var sid = safeid(cd.cust);
     var expanded = !!_chExpanded[sid];
 
@@ -2410,7 +2411,14 @@ function renderCustomerOverview(healthData) {
 
   return '<div style="margin-bottom:10px;">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">'
-      +'<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;">Customer overview &#x2014; Q1 2025 &#x2192; present &middot; sorted by YTD units &middot; thru '+ytdLabel+'</div>'
+      +'<div style="display:flex;align-items:center;gap:8px;">'
+        +'<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;">Customer overview &middot; thru '+ytdLabel+'</div>'
+        +'<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
+          +'<button onclick="setCustLimit(10)" style="'+navBtnStyle(custLimit===10)+'">Top 10</button>'
+          +'<button onclick="setCustLimit(25)" style="'+navBtnStyle(custLimit===25)+'">Top 25</button>'
+          +'<button onclick="setCustLimit(0)" style="'+navBtnStyle(custLimit===0)+'">All <span style="opacity:.6;">('+customers.length+')</span></button>'
+        +'</div>'
+      +'</div>'
       +legendHTML
     +'</div>'
     +rows
