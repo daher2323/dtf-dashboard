@@ -454,7 +454,7 @@ function applyRole() {
   }
 }
 
-
+function parseCSV(text) {
   var clean = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
   var lines = clean.trim().split('\n');
   var headers = lines[0].split(',').map(function(h){ return h.replace(/^"|"$/g,'').trim().replace(/^\uFEFF/,''); });
