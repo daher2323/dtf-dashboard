@@ -844,16 +844,7 @@ function renderSubBar() {
       sb.innerHTML = '';
     }
   } else if (mainSection === 'procurement') {
-    var pj = procView==='jars', pb = procView==='bottles', pl = procView==='lids', pd = procView==='desiccants', pn = procView==='neckbands';
-    sb.innerHTML =
-      '<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;margin:6px 0;">'
-      + '<button onclick="setProcView(\'jars\')" style="'+navBtnStyle(pj)+'">Jars</button>'
-      + '<button onclick="setProcView(\'bottles\')" style="'+navBtnStyle(pb)+'">Bottles</button>'
-      + '<button onclick="setProcView(\'lids\')" style="'+navBtnStyle(pl)+'">Lids</button>'
-      + '<button onclick="setProcView(\'desiccants\')" style="'+navBtnStyle(pd)+'">Desiccants</button>'
-      + '<button onclick="setProcView(\'neckbands\')" style="'+navBtnStyle(pn)+'">Neckbands</button>'
-      + '</div>';
-      + '</div>';
+    sb.innerHTML = '';
   }
 }
 
@@ -2691,15 +2682,15 @@ function renderCustomerOverview(healthData) {
 
   var legendHTML = '';
 
-  return '<div style="margin-bottom:10px;">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:12px;">'
-      +'<div style="display:flex;align-items:center;gap:8px;">'
-        +'<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;">Customer overview &middot; thru '+ytdLabel+'</div>'
-        +'<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
-          +'<button onclick="setCustLimit(10)" style="'+navBtnStyle(custLimit===10)+'">Top 10</button>'
-          +'<button onclick="setCustLimit(25)" style="'+navBtnStyle(custLimit===25)+'">Top 25</button>'
-          +'<button onclick="setCustLimit(0)" style="'+navBtnStyle(custLimit===0)+'">All <span style="opacity:.6;">('+customers.length+')</span></button>'
-        +'</div>'
+  return '<div style="margin-bottom:12px;">'
+    +'<div style="margin-bottom:8px;">'
+      +'<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;">Customer overview &middot; thru '+ytdLabel+'</div>'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;">'
+      +'<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
+        +'<button onclick="setCustLimit(10)" style="'+navBtnStyle(custLimit===10)+'">Top 10</button>'
+        +'<button onclick="setCustLimit(25)" style="'+navBtnStyle(custLimit===25)+'">Top 25</button>'
+        +'<button onclick="setCustLimit(0)" style="'+navBtnStyle(custLimit===0)+'">All <span style="opacity:.6;">('+customers.length+')</span></button>'
       +'</div>'
     +'</div>'
     +rows
@@ -3318,24 +3309,40 @@ function renderProcurement() {
 
   var ytdLabelFull = now.toLocaleDateString('en-US',{month:'short',day:'numeric'});
   document.getElementById('content').innerHTML =
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:12px;">'
-      +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
-        +'<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;">'+Label+' usage — Q1 2025 &#x2192; present &middot; sorted by YTD &middot; thru '+ytdLabelFull+'</div>'
-        +((hiddenCount > 0 || showZeroDes)
-          ? '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:#5f5e5a;user-select:none;">'
-              +'<input type="checkbox" onchange="showZeroDes=this.checked;renderProcurement()" '+(showZeroDes?'checked':'')+' style="accent-color:#378ADD;cursor:pointer;">'
-              +'Show '+Label.toLowerCase()+'s with zero usage YTD'+(hiddenCount > 0 && !showZeroDes ? ' ('+hiddenCount+')' : '')
-            +'</label>'
-          : '')
+    '<div style="margin-bottom:12px;">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
+        +'<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;">'+Label+' usage — Q1 2025 &#x2192; present &middot; sorted by YTD &middot; thru '+ytdLabelFull+''
+          +((hiddenCount > 0 || showZeroDes)
+            ? ' &nbsp;<label style="font-size:10px;color:#5f5e5a;cursor:pointer;font-weight:400;text-transform:none;letter-spacing:0;display:inline-flex;align-items:center;gap:5px;">'
+                +'<input type="checkbox" onchange="showZeroDes=this.checked;renderProcurement()" '+(showZeroDes?'checked':'')+' style="accent-color:#378ADD;cursor:pointer;">'
+                +'Show '+Label.toLowerCase()+'s with zero usage YTD'+(hiddenCount > 0 && !showZeroDes ? ' ('+hiddenCount+')' : '')
+              +'</label>'
+            : '')
+        +'</div>'
       +'</div>'
-      +'<div style="flex-shrink:0;position:relative;" id="proc-export-wrap">'
-        +'<button onclick="toggleProcExportPopover(event)" style="font-size:12px;padding:5px 12px;border:1.5px solid #378ADD;border-radius:8px;background:#0C447C;cursor:pointer;color:#85B7EB;font-weight:500;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-family:system-ui;">'
-          +'<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#85B7EB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 1v7M3.5 5.5l3 3 3-3M2 11h9"/></svg>'
-          +'Export'
-        +'</button>'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">'
+        +'<div id="proc-subnav"></div>'
+        +'<div style="flex-shrink:0;position:relative;" id="proc-export-wrap">'
+          +'<button onclick="toggleProcExportPopover(event)" style="font-size:12px;padding:5px 12px;border:1.5px solid #378ADD;border-radius:8px;background:#0C447C;cursor:pointer;color:#85B7EB;font-weight:500;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-family:system-ui;">'
+            +'<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#85B7EB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 1v7M3.5 5.5l3 3 3-3M2 11h9"/></svg>'
+            +'Export'
+          +'</button>'
+        +'</div>'
       +'</div>'
     +'</div>'
     + rows;
+
+  // Inject category nav into the content header
+  var pj=procView==='jars',pb=procView==='bottles',pl=procView==='lids',pd=procView==='desiccants',pn=procView==='neckbands';
+  var sn = document.getElementById('proc-subnav');
+  if (sn) sn.innerHTML =
+    '<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
+    +'<button onclick="setProcView(\'jars\')" style="'+navBtnStyle(pj)+'">Jars</button>'
+    +'<button onclick="setProcView(\'bottles\')" style="'+navBtnStyle(pb)+'">Bottles</button>'
+    +'<button onclick="setProcView(\'lids\')" style="'+navBtnStyle(pl)+'">Lids</button>'
+    +'<button onclick="setProcView(\'desiccants\')" style="'+navBtnStyle(pd)+'">Desiccants</button>'
+    +'<button onclick="setProcView(\'neckbands\')" style="'+navBtnStyle(pn)+'">Neckbands</button>'
+    +'</div>';
 }
 
 function renderCustomers() {
