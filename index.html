@@ -2733,7 +2733,7 @@ function renderProcurement() {
       return parts.join(' ');
     }
     if (isDes)  { var dv = (r['Desiccant']||'').trim(); return /^(none|n\/a)$/i.test(dv) ? '' : dv; }
-    if (isNeck) return (r['Neckband Used']||'').trim();
+    if (isNeck) { var nv = (r['Neckband Used']||'').trim(); return /^(none|n\/a)$/i.test(nv) ? '' : nv; }
     return (r[procView === 'jars' ? 'Jar Size' : 'Bottle Size']||'').trim();
   }
 
@@ -3049,7 +3049,7 @@ function renderProcurement() {
         +((isDes || isNeck) && (hiddenCount > 0 || showZeroDes)
           ? '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:#5f5e5a;user-select:none;">'
               +'<input type="checkbox" onchange="showZeroDes=this.checked;renderProcurement()" '+(showZeroDes?'checked':'')+' style="accent-color:#378ADD;cursor:pointer;">'
-              +'Show desiccants with zero usage YTD'+(hiddenCount > 0 && !showZeroDes ? ' ('+hiddenCount+')' : '')
+              +'Show '+(isNeck?'neckbands':'desiccants')+' with zero usage YTD'+(hiddenCount > 0 && !showZeroDes ? ' ('+hiddenCount+')' : '')
             +'</label>'
           : '')
       +'</div>'
