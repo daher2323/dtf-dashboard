@@ -3322,27 +3322,27 @@ function renderProcurement() {
 
   var ytdLabelFull = now.toLocaleDateString('en-US',{month:'short',day:'numeric'});
   document.getElementById('content').innerHTML =
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">'
-      +'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;gap:12px;">'
+      +'<div style="display:flex;flex-direction:column;gap:6px;">'
         +'<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;">'+Label+' usage — Q1 2025 &#x2192; present &middot; sorted by YTD &middot; thru '+ytdLabelFull+'</div>'
-      +'<div style="display:flex;align-items:center;gap:10px;">'
-        +(( hiddenCount > 0 || showZeroDes)
-          ? '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:#5f5e5a;user-select:none;">'
-              +'<input type="checkbox" onchange="showZeroDes=this.checked;renderProcurement()" '+(showZeroDes?'checked':'')+' style="accent-color:#378ADD;cursor:pointer;">'
-              +'Show '+Label.toLowerCase()+'s with zero usage YTD'+(hiddenCount > 0 && !showZeroDes ? ' ('+hiddenCount+')' : '')
-            +'</label>'
-          : '')
-        +'<div style="position:relative;" id="proc-export-wrap"><button onclick="toggleProcExportPopover(event)" style="font-size:12px;padding:5px 12px;border:1.5px solid #378ADD;border-radius:8px;background:#0C447C;cursor:pointer;color:#85B7EB;font-weight:500;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-family:system-ui;">'
+        +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+          +'<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:5px;background:#085041;color:#9FE1CB;">&#x2191; Up</span>'
+          +'<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:5px;background:#791F1F;color:#F09595;">&#x2193; Down</span>'
+          +'<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:5px;background:#2c2c2a;color:#888780;">&#x2192; Flat</span>'
+          +'<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:5px;background:#0C447C;color:#85B7EB;">New</span>'
+          +((hiddenCount > 0 || showZeroDes)
+            ? '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:#5f5e5a;user-select:none;margin-left:4px;">'
+                +'<input type="checkbox" onchange="showZeroDes=this.checked;renderProcurement()" '+(showZeroDes?'checked':'')+' style="accent-color:#378ADD;cursor:pointer;">'
+                +'Show '+Label.toLowerCase()+'s with zero usage YTD'+(hiddenCount > 0 && !showZeroDes ? ' ('+hiddenCount+')' : '')
+              +'</label>'
+            : '')
+        +'</div>'
+      +'</div>'
+      +'<div style="flex-shrink:0;position:relative;" id="proc-export-wrap">'
+        +'<button onclick="toggleProcExportPopover(event)" style="font-size:12px;padding:5px 12px;border:1.5px solid #378ADD;border-radius:8px;background:#0C447C;cursor:pointer;color:#85B7EB;font-weight:500;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-family:system-ui;">'
           +'<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="#85B7EB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 1v7M3.5 5.5l3 3 3-3M2 11h9"/></svg>'
           +'Export'
-        +'</button></div>'
-      +'</div>'
-      +'</div>'
-      +'<div style="display:flex;gap:6px;">'
-        +'<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:5px;background:#085041;color:#9FE1CB;">&#x2191; Up</span>'
-        +'<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:5px;background:#791F1F;color:#F09595;">&#x2193; Down</span>'
-        +'<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:5px;background:#2c2c2a;color:#888780;">&#x2192; Flat</span>'
-        +'<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:5px;background:#0C447C;color:#85B7EB;">New</span>'
+        +'</button>'
       +'</div>'
     +'</div>'
     + rows;
