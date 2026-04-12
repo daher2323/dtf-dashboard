@@ -169,7 +169,8 @@ var selectedDetailQuarter = 'ytd';
 var selectedDetailYear = new Date().getFullYear();
 var selectedDetailRange = null;
 var selectedPerfRange = null;
-var procView = 'jars'; // 'jars' | 'bottles'
+var procView = 'jars'; // 'jars' | 'bottles' | 'lids' | 'desiccants'
+var showZeroDes = false;
 var lastRefreshTime = 0;
 var filterState = { customer:[], product:[], status:[], bottle:[], jar:[] };
 
@@ -738,6 +739,7 @@ function renderSubBar() {
 
 function setProcView(v) {
   closeMsPanel();
+  if (v !== 'desiccants') showZeroDes = false;
   procView = v;
   renderSubBar();
   render();
@@ -2860,7 +2862,13 @@ function renderProcurement() {
   // Sort by YTD units descending
   results.sort(function(a,b){ return b.ytdUnits - a.ytdUnits; });
 
-  var maxYtd = Math.max.apply(null, results.map(function(r){ return Math.max(r.ytdUnits, r.ytd25Units); })) || 1;
+  // For desiccants, optionally hide zero-YTD items
+  var visibleResults = (isDes && !showZeroDes)
+    ? results.filter(function(r){ return r.ytdUnits > 0; })
+    : results;
+  var hiddenCount = results.length - visibleResults.length;
+
+  var maxYtd = Math.max.apply(null, visibleResults.map(function(r){ return Math.max(r.ytdUnits, r.ytd25Units); })) || 1;
 
   // Expand state
   if (!window._procExpanded) window._procExpanded = {};
@@ -2874,7 +2882,7 @@ function renderProcurement() {
     return '<span style="display:inline-block;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:500;'+(ml?'margin-left:5px;':'')+'background:'+(pos?'#085041':'#791F1F')+';color:'+(pos?'#9FE1CB':'#F09595')+'">'+(pos?'+':'')+p.toFixed(1)+'%</span>';
   }
 
-  var rows = results.map(function(cd) {
+  var rows = visibleResults.map(function(cd) {
     var sid = 'proc_' + safeid(cd.sku);
     var expanded = !!window._procExpanded[sid];
     var borderColor = cd.tag==='up'?'#1D9E75':cd.tag==='down'?'#791F1F':cd.tag==='new'?'#378ADD':'#444441';
@@ -3048,7 +3056,15 @@ function renderProcurement() {
   var ytdLabelFull = now.toLocaleDateString('en-US',{month:'short',day:'numeric'});
   document.getElementById('content').innerHTML =
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">'
-      +'<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;">'+Label+' usage — Q1 2025 &#x2192; present &middot; sorted by YTD units &middot; thru '+ytdLabelFull+'</div>'
+      +'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'
+        +'<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;">'+Label+' usage — Q1 2025 &#x2192; present &middot; sorted by YTD &middot; thru '+ytdLabelFull+'</div>'
+        +(isDes && hiddenCount > 0
+          ? '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:#5f5e5a;user-select:none;">'
+              +'<input type="checkbox" onchange="showZeroDes=this.checked;renderProcurement()" '+(showZeroDes?'checked':'')+' style="accent-color:#378ADD;cursor:pointer;">'
+              +'Show '+hiddenCount+' with zero usage YTD'
+            +'</label>'
+          : '')
+      +'</div>'
       +'<div style="display:flex;gap:6px;">'
         +'<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:5px;background:#085041;color:#9FE1CB;">&#x2191; Up</span>'
         +'<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:5px;background:#791F1F;color:#F09595;">&#x2193; Down</span>'
