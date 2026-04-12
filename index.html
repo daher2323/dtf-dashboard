@@ -722,7 +722,7 @@ function renderSubBar() {
   } else if (mainSection === 'procurement') {
     var pj = procView==='jars', pb = procView==='bottles';
     sb.innerHTML =
-      '<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
+      '<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;margin:6px 0;">'
       + '<button onclick="setProcView(\'jars\')" style="'+navBtnStyle(pj)+'">Jars</button>'
       + '<button onclick="setProcView(\'bottles\')" style="'+navBtnStyle(pb)+'">Bottles</button>'
       + '</div>';
@@ -2801,22 +2801,6 @@ function renderProcurement() {
     +'</div>';
   }).join('');
 
-  // Summary bar
-  var topSku = results[0];
-  var fastestGrowing = results.filter(function(r){return r.ytdChg!==null;}).sort(function(a,b){return b.ytdChg-a.ytdChg;})[0];
-  var biggestDecline = results.filter(function(r){return r.ytdChg!==null;}).sort(function(a,b){return a.ytdChg-b.ytdChg;})[0];
-  var totalYtdLots   = results.reduce(function(s,r){return s+r.ytdLots;},0);
-
-  var summaryBar = '<div style="padding:10px 14px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;display:flex;gap:0;margin-top:8px;flex-wrap:wrap;">'
-    +'<div style="text-align:center;padding:0 16px;"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">'+Label+' types</div><div style="font-size:18px;font-weight:500;color:#e8e6e0;">'+results.length+'</div></div>'
-    +'<div style="width:0.5px;background:#2c2c2a;"></div>'
-    +'<div style="text-align:center;padding:0 16px;"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Total lots YTD</div><div style="font-size:18px;font-weight:500;color:#e8e6e0;">'+totalYtdLots+'</div></div>'
-    +'<div style="width:0.5px;background:#2c2c2a;"></div>'
-    +'<div style="text-align:center;padding:0 16px;"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Most used</div><div style="font-size:13px;font-weight:500;color:#378ADD;">'+(topSku?topSku.sku:'&#x2014;')+'</div></div>'
-    +(fastestGrowing && fastestGrowing.ytdChg > 0 ? '<div style="width:0.5px;background:#2c2c2a;"></div><div style="text-align:center;padding:0 16px;"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Fastest growing</div><div style="font-size:13px;font-weight:500;color:#1D9E75;">'+fastestGrowing.sku+' <span style="font-size:11px;font-weight:400;color:#888780;">+'+(fastestGrowing.ytdChg).toFixed(1)+'% YTD</span></div></div>' : '')
-    +(biggestDecline && biggestDecline.ytdChg < 0 ? '<div style="width:0.5px;background:#2c2c2a;"></div><div style="text-align:center;padding:0 16px;"><div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">Biggest decline</div><div style="font-size:13px;font-weight:500;color:#E24B4A;">'+biggestDecline.sku+' <span style="font-size:11px;font-weight:400;color:#888780;">'+(biggestDecline.ytdChg).toFixed(1)+'% YTD</span></div></div>' : '')
-  +'</div>';
-
   var ytdLabelFull = now.toLocaleDateString('en-US',{month:'short',day:'numeric'});
   document.getElementById('content').innerHTML =
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">'
@@ -2828,8 +2812,7 @@ function renderProcurement() {
         +'<span style="font-size:10px;font-weight:500;padding:2px 8px;border-radius:5px;background:#0C447C;color:#85B7EB;">New</span>'
       +'</div>'
     +'</div>'
-    + rows
-    + summaryBar;
+    + rows;
 }
 
 function renderCustomers() {
