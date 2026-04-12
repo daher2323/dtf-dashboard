@@ -3391,8 +3391,8 @@ function closeProcExportPopover() {
 }
 
 
+function toggleExportPopover(e) {
   e.stopPropagation();
-  var existing = document.getElementById('export-popover');
   if (existing) { existing.remove(); return; }
   var lots = getFilteredLots();
   var count = lots.length;
