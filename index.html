@@ -740,7 +740,7 @@ function renderSubBar() {
 
 function setProcView(v) {
   closeMsPanel();
-  if (v !== 'desiccants' && v !== 'neckbands') showZeroDes = false;
+  showZeroDes = false;
   procView = v;
   renderSubBar();
   render();
@@ -2865,8 +2865,8 @@ function renderProcurement() {
   // Sort by YTD units descending
   results.sort(function(a,b){ return b.ytdUnits - a.ytdUnits; });
 
-  // For desiccants/neckbands, optionally hide zero-YTD items
-  var visibleResults = ((isDes || isNeck) && !showZeroDes)
+  // Hide zero-YTD items unless showZeroDes is checked
+  var visibleResults = !showZeroDes
     ? results.filter(function(r){ return r.ytdUnits > 0; })
     : results;
   var hiddenCount = results.length - visibleResults.length;
@@ -3046,10 +3046,10 @@ function renderProcurement() {
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">'
       +'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'
         +'<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;">'+Label+' usage — Q1 2025 &#x2192; present &middot; sorted by YTD &middot; thru '+ytdLabelFull+'</div>'
-        +((isDes || isNeck) && (hiddenCount > 0 || showZeroDes)
+        +((hiddenCount > 0 || showZeroDes)
           ? '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:#5f5e5a;user-select:none;">'
               +'<input type="checkbox" onchange="showZeroDes=this.checked;renderProcurement()" '+(showZeroDes?'checked':'')+' style="accent-color:#378ADD;cursor:pointer;">'
-              +'Show '+(isNeck?'neckbands':'desiccants')+' with zero usage YTD'+(hiddenCount > 0 && !showZeroDes ? ' ('+hiddenCount+')' : '')
+              +'Show '+Label.toLowerCase()+'s with zero usage YTD'+(hiddenCount > 0 && !showZeroDes ? ' ('+hiddenCount+')' : '')
             +'</label>'
           : '')
       +'</div>'
