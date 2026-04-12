@@ -2925,11 +2925,6 @@ function renderProcurement() {
       +'<div style="display:flex;gap:20px;flex-shrink:0;margin-left:16px;">'
         +'<div style="text-align:right;"><div style="font-size:10px;color:#888780;margin-bottom:2px;">Lots YTD</div>'
           +'<div style="font-size:12px;font-weight:500;color:#e8e6e0;">'+cd.ytdLots+(cd.ytd25Lots?' <span style="font-size:11px;color:#5f5e5a;font-weight:400;">was '+cd.ytd25Lots+'</span>':'')+'</div></div>'
-        +(isDes && cd.ytdAvgPerUnit !== null
-          ? '<div style="text-align:right;"><div style="font-size:10px;color:#888780;margin-bottom:2px;">Avg per unit</div>'
-              +'<div style="font-size:12px;font-weight:500;color:#e8e6e0;">'+cd.ytdAvgPerUnit
-              +pctB(cd.ytdAvgPerUnit, cd.ytd25AvgPerUnit, true)+'</div></div>'
-          : '')
         +'<div style="text-align:right;border-left:0.5px solid #2c2c2a;padding-left:16px;"><div style="font-size:10px;color:#888780;margin-bottom:2px;">'+(isDes?'Total YTD':'% of '+label+' usage')+'</div>'
           +'<div style="font-size:14px;font-weight:500;color:#e8e6e0;">'
           +(isDes ? cd.ytdUnits.toLocaleString()+pctB(cd.ytdUnits, cd.ytd25Units, true) : (cd.ytdPct!==null?cd.ytdPct+'%':'&#x2014;')+pctB(cd.ytdPct, cd.ytdPct25, true))
@@ -2964,16 +2959,8 @@ function renderProcurement() {
         +'<td style="'+tdB+rBg+'text-align:right;color:#e8e6e0;">'+(q.lots||'&#x2014;')+'</td>'
         +'<td style="'+tdB+rBg+'text-align:right;color:#e8e6e0;">'+(q.units?q.units.toLocaleString():'&#x2014;')+'</td>'
         +'<td style="'+tdB+rBg+'text-align:right;">'+unitsDelta+'</td>'
-        +(isDes
-          ? '<td style="'+tdB+rBg+'text-align:right;color:#888780;">'+(q.avgPerUnit!==null?q.avgPerUnit:'&#x2014;')+'</td>'
-            +'<td style="'+tdB+rBg+'text-align:right;">'+(function(){
-              var prevAvg=null;
-              for(var ai=idx-1;ai>=0;ai--){if(cd.qtrs[ai].avgPerUnit!==null){prevAvg=cd.qtrs[ai].avgPerUnit;break;}}
-              return prevAvg!==null&&q.avgPerUnit!==null&&q.key!==curQk?pctB(q.avgPerUnit,prevAvg,true):'';
-            }())+'</td>'
-          : '<td style="'+tdB+rBg+'text-align:right;color:#888780;">'+(q.pctOfTotal!==null?q.pctOfTotal+'%':'&#x2014;')+'</td>'
-            +'<td style="'+tdB+rBg+'text-align:right;">'+pctDelta+'</td>'
-        )
+        +'<td style="'+tdB+rBg+'text-align:right;color:#888780;">'+(q.pctOfTotal!==null?q.pctOfTotal+'%':'&#x2014;')+'</td>'
+        +'<td style="'+tdB+rBg+'text-align:right;">'+pctDelta+'</td>'
         +'<td style="'+tdB+rBg+'padding-right:14px;width:110px;">'
           +'<div style="height:4px;background:#2c2c2a;border-radius:2px;overflow:hidden;"><div style="height:100%;width:'+bW+'%;background:'+bCol+';border-radius:2px;"></div></div>'
         +'</td>'
@@ -3020,13 +3007,11 @@ function renderProcurement() {
     var qtrSection = '<table style="width:100%;border-collapse:collapse;">'
       +'<thead><tr>'
         +'<th style="'+thSL+'">Quarter</th>'
-        +'<th style="'+thS+'">Lots</th>'
         +'<th style="'+thS+'">'+(isDes?'Desiccants':'Units')+'</th>'
         +'<th style="'+thS+'width:70px;">vs prev</th>'
-        +(isDes
-          ? '<th style="'+thS+'">Avg/unit</th><th style="'+thS+'width:70px;">vs prev</th>'
-          : '<th style="'+thS+'">% of '+label+'s</th><th style="'+thS+'width:70px;">vs prev</th>'
-        )
+        +'<th style="'+thS+'">Lots</th>'
+        +'<th style="'+thS+'">% of total</th>'
+        +'<th style="'+thS+'width:70px;">vs prev</th>'
         +'<th style="'+thS+'padding-right:14px;width:110px;">Volume</th>'
       +'</tr></thead>'
       +'<tbody>'+tableRows+'</tbody>'
