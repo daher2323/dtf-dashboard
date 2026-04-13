@@ -569,6 +569,7 @@ function buildLotMap(rows) {
 
 function lotDev(l) {
   if (!l||!l.projected) return null;
+  if (l.status && l.status.toLowerCase().includes('partial')) return null;
   return ((l.finalUnits - l.projected) / l.projected) * 100;
 }
 
