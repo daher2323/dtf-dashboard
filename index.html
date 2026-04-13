@@ -648,7 +648,7 @@ function applyFreshData(res) {
     return false;
   }
   allRows = newRows; allRows25 = newRows25; dailyTargets = newTargets;
-  lotMap = buildLotMap(allRows.concat(allRows25));
+  lotMap = buildLotMap(allRows);
   buildProductionDays(true);
   return true;
 }
@@ -687,7 +687,7 @@ function loadDashboard() {
     }
     allRows = rows; allRows25 = rows25;
     dailyTargets = parseTargets(results[2]);
-    lotMap = buildLotMap(allRows.concat(allRows25));
+    lotMap = buildLotMap(allRows);
     buildProductionDays(false);
     lastRefreshTime = Date.now();
     document.getElementById('loading').style.display = 'none';
