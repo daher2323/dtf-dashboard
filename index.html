@@ -29,6 +29,7 @@
   .main-tab:not(.on) .main-tab-name { color: #5f5e5a; }
   .app-bar-right { display: flex; align-items: center; gap: 8px; padding-left: 16px; border-left: 0.5px solid #2c2c2a; margin-left: auto; flex-shrink: 0; }
   .sub-bar-outer { background: #0d1118; border-bottom: 0.5px solid #1a2030; position: sticky; top: 68px; z-index: 99; }
+  .cust-col-header-outer { background: #0d0f10; border-bottom: 0.5px solid #2c2c2a; position: sticky; top: 108px; z-index: 98; display: none; }
   .sub-divider { width: 0.5px; height: 20px; background: #2c2c2a; flex-shrink: 0; }
 
   .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 1.25rem; }
@@ -157,6 +158,10 @@
 <!-- Sub-bar -->
 <div class="sub-bar-outer">
   <div id="sub-bar" style="max-width:1400px;margin:0 auto;width:100%;display:flex;align-items:center;gap:8px;padding:.5rem 1.5rem;"></div>
+</div>
+<!-- Customer column header (sticky, shown only on customer overview) -->
+<div class="cust-col-header-outer" id="cust-col-header-outer">
+  <div id="cust-col-header" style="max-width:1400px;margin:0 auto;width:100%;padding:0 1.5rem;"></div>
 </div>
 
 <div class="shell">
@@ -813,6 +818,9 @@ function navBtnStyle(isActive) {
 function setMainSection(s) {
   closeMsPanel();
   mainSection = s;
+  // Hide customer col header when not on customers
+  var hdrOuter = document.getElementById('cust-col-header-outer');
+  if(hdrOuter && s !== 'customers') hdrOuter.style.display = 'none';
   ['production','customers','procurement'].forEach(function(k) {
     var t = document.getElementById('mtab-' + k);
     if (!t) return;
@@ -836,12 +844,7 @@ function setMainSection(s) {
 
 function renderSubBar() {
   var sb = document.getElementById('sub-bar');
-  var abr = document.getElementById('app-bar-right');
   if (!sb) return;
-
-  // Live pill always in app-bar-right
-  var isLive = (mainSection === 'production') && isViewingLive && typeof isViewingLive === 'function' && isViewingLive();
-  if (abr) abr.innerHTML = isLive ? '<span style="font-size:10px;color:#1D9E75;font-weight:500;padding:3px 10px;border-radius:10px;background:#085041;white-space:nowrap;">&#8635; Live</span>' : '';
 
   if (mainSection === 'production') {
     var isAdmin = userRole === 'admin';
@@ -2418,6 +2421,8 @@ function toggleRecords() {
 
 function selectCustomer(name) {
   selectedCustomer = name;
+  var hdrOuter = document.getElementById('cust-col-header-outer');
+  if(hdrOuter) hdrOuter.style.display = name ? 'none' : 'block';
   renderSubBar();
   renderCustomers();
   window.scrollTo(0, 0);
@@ -2763,34 +2768,30 @@ function renderCustomerOverview(healthData) {
         +'<div style="display:flex;align-items:center;gap:7px;">'
           +'<div style="width:32px;font-size:10px;color:#5f5e5a;flex-shrink:0;">'+prevYr+'</div>'
           +'<div style="flex:1;height:7px;background:#2c2c2a;border-radius:2px;overflow:hidden;"><div style="height:100%;width:'+w25+'%;background:#4A6580;border-radius:2px;"></div></div>'
-          +'<div style="font-size:11px;color:#888780;width:60px;text-align:right;flex-shrink:0;">'+(cd.ytd25?cd.ytd25.toLocaleString():'&#x2014;')+'</div>'
+          +'<div style="font-size:11px;color:#888780;width:80px;text-align:right;flex-shrink:0;">'+(cd.ytd25?cd.ytd25.toLocaleString():'&#x2014;')+'</div>'
+          +'<div style="width:60px;flex-shrink:0;"></div>'
         +'</div>'
         +'<div style="display:flex;align-items:center;gap:7px;">'
           +'<div style="width:32px;font-size:10px;color:#378ADD;flex-shrink:0;">'+nowYr+'</div>'
           +'<div style="flex:1;height:7px;background:#2c2c2a;border-radius:2px;overflow:hidden;"><div style="height:100%;width:'+w26+'%;background:'+bar26Color+';border-radius:2px;"></div></div>'
-          +'<div style="font-size:11px;color:#e8e6e0;font-weight:500;width:60px;text-align:right;flex-shrink:0;">'+cd.ytd.toLocaleString()+'</div>'
-          +pctBadge(cd.ytd, cd.ytd25, true)
+          +'<div style="font-size:11px;color:#e8e6e0;font-weight:500;width:80px;text-align:right;flex-shrink:0;">'+cd.ytd.toLocaleString()+'</div>'
+          +'<div style="width:60px;flex-shrink:0;">'+pctBadge(cd.ytd, cd.ytd25, false)+'</div>'
         +'</div>'
       +'</div>'
-      +'<div style="display:flex;gap:20px;flex-shrink:0;margin-left:16px;">'
-        +'<div style="text-align:right;">'
-          +'<div style="font-size:10px;color:#888780;margin-bottom:2px;">Lots YTD</div>'
-          +'<div style="font-size:12px;font-weight:500;color:#e8e6e0;">'+cd.ytdLots
-            +(cd.ytdLots25?' <span style="font-size:11px;color:#5f5e5a;font-weight:400;">was '+cd.ytdLots25+'</span>':'')
-          +'</div>'
-        +'</div>'
-        +'<div style="text-align:right;">'
-          +'<div style="font-size:10px;color:#888780;margin-bottom:2px;">Avg run</div>'
-          +'<div style="font-size:12px;font-weight:500;color:#e8e6e0;">'+(ytdAvgRun?ytdAvgRun.toLocaleString():'&#x2014;')
-            +pctBadge(ytdAvgRun, ytdAvgRun25, true)
-          +'</div>'
-        +'</div>'
-        +'<div style="text-align:right;border-left:0.5px solid #2c2c2a;padding-left:16px;">'
-          +'<div style="font-size:10px;color:#888780;margin-bottom:2px;">% of production</div>'
-          +'<div style="font-size:14px;font-weight:500;color:#e8e6e0;">'+(cd.ytdPct!==null?cd.ytdPct+'%':'&#x2014;')
-            +(cd.ytdPct!==null&&cd.ytdPct25!==null?pctBadge(cd.ytdPct, cd.ytdPct25, true):'')
-          +'</div>'
-        +'</div>'
+      +'<div style="width:80px;flex-shrink:0;text-align:right;padding-left:16px;">'
+        +'<div style="font-size:9px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Lots YTD</div>'
+        +'<div style="font-size:12px;font-weight:500;color:#e8e6e0;">'+cd.ytdLots+'</div>'
+        +(cd.ytdLots25?'<div style="font-size:10px;color:#5f5e5a;">was '+cd.ytdLots25+'</div>':'')
+      +'</div>'
+      +'<div style="width:130px;flex-shrink:0;text-align:right;">'
+        +'<div style="font-size:9px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">Avg run size</div>'
+        +'<div style="font-size:12px;font-weight:500;color:#e8e6e0;">'+(ytdAvgRun?ytdAvgRun.toLocaleString():'&#x2014;')+'</div>'
+        +(ytdAvgRun&&ytdAvgRun25?'<div>'+pctBadge(ytdAvgRun, ytdAvgRun25, false)+'</div>':'<div style="height:18px;"></div>')
+      +'</div>'
+      +'<div style="width:130px;flex-shrink:0;text-align:right;border-left:0.5px solid #2c2c2a;padding-left:16px;">'
+        +'<div style="font-size:9px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;">% of production</div>'
+        +'<div style="font-size:14px;font-weight:500;color:#e8e6e0;">'+(cd.ytdPct!==null?cd.ytdPct+'%':'&#x2014;')+'</div>'
+        +(cd.ytdPct!==null&&cd.ytdPct25!==null?'<div>'+pctBadge(cd.ytdPct, cd.ytdPct25, false)+'</div>':'<div style="height:18px;"></div>')
       +'</div>'
       +'<div style="display:flex;align-items:flex-end;gap:2px;height:28px;flex-shrink:0;margin-left:16px;">'+sparkBars+'</div>'
       +'<svg id="ch-chev-'+sid+'" width="12" height="12" viewBox="0 0 12 12" fill="none" style="flex-shrink:0;margin-left:8px;transition:transform .15s;transform:'+(expanded?'rotate(180deg)':'')+'"><polyline points="2,4 6,8 10,4" stroke="#5f5e5a" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -2865,9 +2866,9 @@ function renderCustomerOverview(healthData) {
         +'<th style="'+thS+'">Units</th>'
         +'<th style="'+thS+'width:70px;">vs prev</th>'
         +'<th style="'+thS+'">Lots</th>'
-        +'<th style="'+thS+'">Avg run</th>'
+        +'<th style="'+thS+'">Avg run size</th>'
         +'<th style="'+thS+'width:70px;">vs prev</th>'
-        +'<th style="'+thS+'">% of prod</th>'
+        +'<th style="'+thS+'">% of production</th>'
         +'<th style="'+thS+'width:70px;">vs prev</th>'
         +'<th style="'+thS+'padding-right:14px;width:110px;">Volume</th>'
       +'</tr></thead>'
@@ -2882,11 +2883,13 @@ function renderCustomerOverview(healthData) {
 
   var legendHTML = '';
 
-  return '<div style="margin-bottom:14px;">'
-    +'<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;">Customer overview &middot; thru '+ytdLabel+'</div>'
-  +'</div>'
-  +rows
-  +'</div>';
+
+  // Hide external sticky header — not used
+  var hdrOuter = document.getElementById('cust-col-header-outer');
+  if(hdrOuter) hdrOuter.style.display = 'none';
+
+  return '<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">Customer overview &middot; thru '+ytdLabel+'</div>'
+    +rows+'</div>';
 }
 
 function _triggerExpandedSynopses() {
