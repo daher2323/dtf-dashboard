@@ -236,6 +236,29 @@
     transform-origin: center;
     animation: pctTargetPulse 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
+
+  /* Order Aging status filter bar (Open Orders → Order Aging only) */
+  .agf-seg { display:inline-flex; border:1px solid #1f2937; border-radius:8px; overflow:hidden; margin-bottom:16px; }
+  .agf-seg button { font-size:13px; font-weight:550; padding:8px 16px; border:none; background:transparent;
+    color:#7c8698; cursor:pointer; border-right:1px solid #1f2937; }
+  .agf-seg button:last-child { border-right:none; }
+  .agf-seg button:hover { color:#e8edf5; }
+  .agf-seg button.on { background:rgba(55,138,221,.20); color:#9cc7f3; }
+
+  .agf-grid { display:grid; gap:10px 10px; align-items:center; margin-bottom:20px; } /* grid-template-columns set inline; margin clears the bucket tiles below */
+  .agf-glabel { grid-column:1; font-size:10.5px; letter-spacing:.07em; text-transform:uppercase;
+    color:#55606e; white-space:nowrap; }
+  .agf-glabel.att { color:#cf8f91; }
+
+  .agf-chip { display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%;
+    padding:7px 12px; border-radius:8px; border:1px solid transparent; cursor:pointer; user-select:none;
+    font-size:12.5px; font-weight:500; }
+  .agf-chip.att { background:rgba(224,104,107,.12); border-color:rgba(224,104,107,.30); color:#f0a9ab; }
+  .agf-chip.mot { background:rgba(122,136,155,.09); border-color:rgba(122,136,155,.22); color:#aeb8c6; }
+  .agf-chip:hover { border-color:rgba(255,255,255,.22); }
+  .agf-chip .agf-n { font-size:11px; color:#7c8698; font-variant-numeric:tabular-nums; }
+  .agf-chip.off { opacity:.32; }
+  .agf-chip.off .agf-lbl { text-decoration:line-through; }
 </style>
 <!-- Google Analytics 4 (GA4) — measurement ID G-MWCKT9L4N0.
      Production-only: the gtag('config') call is gated on the URL not
@@ -483,6 +506,125 @@ var ORDERS_STATUS_PILL = {
 };
 // Preferred ordering when listing statuses (exec report order).
 var ORDERS_STATUS_ORDER = ['Customer Driven','Not Enough Labels','Packaging Pulled','Process','Ready to be Planned','Scheduled','Hold','Complete/RTS','(blank)'];
+
+// ── Order Aging status filter (Open Orders → Order Aging only) ──────────
+// Classifies each planning status as "attention" (actionable) or "motion"
+// (waiting / non-actionable). Any status NOT listed defaults to 'attention'
+// so unrecognized statuses are always surfaced, never silently hidden.
+var STATUS_GROUP = {
+  'not enough labels':   'attention',
+  'ready to be planned': 'attention',
+  'customer driven':     'attention',
+  'process':             'motion',
+  'scheduled':           'motion',
+  'packaging pulled':    'motion',
+  'hold':                'motion'
+};
+// The property on each aging-row object that holds the planning status.
+var STATUS_FIELD = 'status';
+// Normalized status -> boolean. Empty on load, so every status starts active
+// on first render. Topped up non-destructively each render (see
+// initStatusFilter) so live toggles survive re-renders and any newly-appearing
+// status defaults to active. No persistence in v1: resets to all-active on load.
+var activeStatuses = {};
+
+function normStatus(raw) {
+  var s = (raw === null || raw === undefined) ? '' : String(raw);
+  return s.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+function groupForStatus(raw) {
+  var g = STATUS_GROUP[normStatus(raw)];
+  return g ? g : 'attention'; // unknown -> always surfaced
+}
+// Non-destructive: registers any status not seen yet as active. Does NOT reset
+// existing toggles, so calling it on every render is safe.
+function initStatusFilter(agingOrders) {
+  var i, k;
+  for (i = 0; i < agingOrders.length; i++) {
+    k = normStatus(agingOrders[i][STATUS_FIELD]);
+    if (activeStatuses[k] === undefined) activeStatuses[k] = true;
+  }
+}
+function statusIsActive(order) {
+  return activeStatuses[normStatus(order[STATUS_FIELD])] === true;
+}
+function activeAgingOrders(agingOrders) {
+  return agingOrders.filter(statusIsActive);
+}
+// State across the statuses actually present in the aging set: 'all' (every
+// present status active), 'actionable' (exactly the attention group — incl.
+// unknowns, which default to attention), 'noaction' (exactly the motion group),
+// or 'filtered' (any other combination). Drives the header suffix + segmented
+// control active state.
+function agingFilterState(agingOrders) {
+  var seen = {}, keys = [], i, k;
+  for (i = 0; i < agingOrders.length; i++) {
+    k = normStatus(agingOrders[i][STATUS_FIELD]);
+    if (!seen[k]) { seen[k] = true; keys.push(k); }
+  }
+  var allOn = true, actionableMatch = true, noActionMatch = true;
+  for (i = 0; i < keys.length; i++) {
+    k = keys[i];
+    var on = activeStatuses[k] === true;
+    var g = groupForStatus(k); // unknown -> 'attention'
+    if (!on) allOn = false;
+    if (on !== (g === 'attention')) actionableMatch = false;
+    if (on !== (g === 'motion'))    noActionMatch = false;
+  }
+  if (allOn) return 'all';
+  if (actionableMatch) return 'actionable';
+  if (noActionMatch) return 'noaction';
+  return 'filtered';
+}
+// Builds the status filter bar: a segmented control (All statuses / Actionable
+// only / No action needed) over a two-row aligned grid — Needs attention on top,
+// In motion below — sharing chip columns so counts line up on a clean right edge.
+// Chip counts reflect the full aging population (independent of active toggles).
+// Purely presentational; filtering logic lives in the helpers above.
+function renderAgingStatusBar(agingOrders) {
+  if (!agingOrders || agingOrders.length === 0) return '';
+  var seen = {}, attention = [], motion = [], i, raw, key, meta;
+  for (i = 0; i < agingOrders.length; i++) {
+    raw = agingOrders[i][STATUS_FIELD];
+    key = normStatus(raw);
+    if (seen[key]) { seen[key].count++; continue; }
+    meta = { key: key,
+             label: (raw === null || raw === undefined || String(raw) === '') ? '(blank)' : String(raw),
+             group: groupForStatus(raw), count: 1 };
+    seen[key] = meta;
+    (meta.group === 'attention' ? attention : motion).push(meta);
+  }
+  var mode = agingFilterState(agingOrders); // 'all' | 'actionable' | 'noaction' | 'filtered'
+  // Shared column count so both rows align; groups may be uneven (e.g. Hold
+  // now sits in motion), so the shorter row leaves trailing empty cells.
+  var maxCols = Math.max(attention.length, motion.length);
+
+  function segBtn(m, label, fn) {
+    return '<button type="button" class="' + (mode === m ? 'on' : '') + '" onclick="' + fn + '()">' + label + '</button>';
+  }
+  function chipHTML(m, cls) {
+    var on = activeStatuses[m.key] === true;
+    return '<span class="agf-chip ' + cls + (on ? '' : ' off') + '" onclick="toggleStatus(' + jsStr(m.key) + ')">'
+      + '<span class="agf-lbl">' + esc(m.label) + '</span>'
+      + '<span class="agf-n">' + m.count.toLocaleString() + '</span>'
+      + '</span>';
+  }
+
+  var h = '';
+  h += '<div class="agf-seg">';
+  h +=   segBtn('all', 'All statuses', 'showAllStatuses');
+  h +=   segBtn('actionable', 'Actionable only', 'setActionableOnly');
+  h +=   segBtn('noaction', 'No action needed', 'setNoActionOnly');
+  h += '</div>';
+
+  h += '<div class="agf-grid" style="grid-template-columns:120px repeat(' + maxCols + ',max-content);">';
+  h +=   '<span class="agf-glabel att">Needs attention</span>';
+  for (i = 0; i < attention.length; i++) h += chipHTML(attention[i], 'att');
+  h +=   '<span class="agf-glabel">In motion</span>';
+  for (i = 0; i < motion.length; i++) h += chipHTML(motion[i], 'mot');
+  h += '</div>';
+  return h;
+}
 
 var allRows = [], allRows25 = [], lotMap = {}, dailyTargets = {}, weeklyTargets = {};
 var mainSection = 'production'; // 'production' | 'customers' | 'procurement' | 'orders'
@@ -2135,6 +2277,40 @@ function toggleCustomerDrilldown(brand) {
 function toggleAgingDrilldown(bucket) {
   closeMsPanel();
   agingDrilldown = (agingDrilldown === bucket) ? null : bucket;
+  render();
+}
+
+// Order Aging status filter interactions. Each mutates activeStatuses and
+// re-renders through the global render() dispatcher (matching toggleAgingDrilldown).
+function toggleStatus(key) {
+  activeStatuses[key] = !(activeStatuses[key] === true);
+  render();
+}
+function setActionableOnly() {
+  var k;
+  for (k in activeStatuses) {
+    if (activeStatuses.hasOwnProperty(k)) {
+      // unknown statuses (undefined group) resolve to attention -> stay visible
+      activeStatuses[k] = (STATUS_GROUP[k] === 'attention') || (STATUS_GROUP[k] === undefined);
+    }
+  }
+  render();
+}
+function showAllStatuses() {
+  var k;
+  for (k in activeStatuses) {
+    if (activeStatuses.hasOwnProperty(k)) { activeStatuses[k] = true; }
+  }
+  render();
+}
+function setNoActionOnly() {
+  var k;
+  for (k in activeStatuses) {
+    if (activeStatuses.hasOwnProperty(k)) {
+      // motion group only; unknowns (attention by default) are deactivated
+      activeStatuses[k] = (STATUS_GROUP[k] === 'motion');
+    }
+  }
   render();
 }
 
@@ -8184,26 +8360,34 @@ function renderOrdersSummary() {
   // Buckets every open order by `# of Weeks on the Books`, independent of
   // Planning Status. The Labels Blocker only covers one status; a lot of
   // stuck work hides in Customer Driven / Ready to Plan / Scheduled, etc.
-  // Shows only 4+ weeks (anything younger is routine).
+  // Spans all ages: the 0–4 week tile catches recent orders so a status whose
+  // orders are all sub-4-week (e.g. Customer Driven) isn't invisible in tiles.
   var agingRowsAll = [];
   Object.keys(stats.rowsByStatus || {}).forEach(function(st){
     var rb = stats.rowsByStatus[st] || {};
     (rb.powder ||[]).forEach(function(r){ agingRowsAll.push({row:r, type:'Powder',  status:st}); });
     (rb.capsule||[]).forEach(function(r){ agingRowsAll.push({row:r, type:'Capsule', status:st}); });
   });
+  // Status filter: register any new status (defaults active), then bucket only
+  // the active subset. With all statuses active this is agingRowsAll unchanged.
+  initStatusFilter(agingRowsAll);
+  var agingRowsActive = activeAgingOrders(agingRowsAll);
   var agingBuckets = {
+    '0-4':  { rows:[], units:0, label:'0–4 weeks',  color:'#9aa7b8', bg:'#1c2128', accent:'#64748b' },
     '4-8':  { rows:[], units:0, label:'4–8 weeks',  color:'#FAC775', bg:'#2a2310', accent:'#FAC775' },
     '8-12': { rows:[], units:0, label:'8–12 weeks', color:'#EF9F27', bg:'#2a1e0a', accent:'#EF9F27' },
     '12+':  { rows:[], units:0, label:'12+ weeks',      color:'#F09595', bg:'#2a1414', accent:'#E24B4A' }
   };
-  agingRowsAll.forEach(function(x){
+  agingRowsActive.forEach(function(x){
     var w = num(x.row['# of Weeks on the Books']);
-    var key = w >= 12 ? '12+' : w >= 8 ? '8-12' : w >= 4 ? '4-8' : null;
+    // 4+ branches are unchanged (byte-for-byte membership); the 0–4 branch is
+    // purely additive — it catches rows the old code dropped to null.
+    var key = w >= 12 ? '12+' : w >= 8 ? '8-12' : w >= 4 ? '4-8' : (w >= 0 ? '0-4' : null);
     if (!key) return;
     agingBuckets[key].rows.push(x);
     agingBuckets[key].units += num(x.row['Order Amount']);
   });
-  var agingOrder = ['12+','8-12','4-8'];  // most urgent on the left
+  var agingOrder = ['12+','8-12','4-8','0-4'];  // oldest -> newest, left to right
   // Collapse an orphan drilldown if the bucket is now empty (e.g. after refresh).
   if (agingDrilldown && (!agingBuckets[agingDrilldown] || agingBuckets[agingDrilldown].rows.length === 0)) {
     agingDrilldown = null;
@@ -8280,14 +8464,19 @@ function renderOrdersSummary() {
   }
 
   var agingSummary = agingTotalCount === 0
-    ? 'No orders have been on the books 4+ weeks.'
-    : agingTotalCount + ' order' + (agingTotalCount===1?'':'s') + ' · ' + agingTotalUnits.toLocaleString() + ' units on the books 4+ weeks';
+    ? 'No orders on the books.'
+    : agingTotalCount + ' order' + (agingTotalCount===1?'':'s') + ' · ' + agingTotalUnits.toLocaleString() + ' units on the books';
+
+  var _afState = agingFilterState(agingRowsAll);
+  var agingHeaderSuffix = _afState === 'all' ? 'All Statuses' : _afState === 'actionable' ? 'Actionable Only' : _afState === 'noaction' ? 'No Action Needed' : 'Filtered';
+  var agingStatusBar = renderAgingStatusBar(agingRowsAll);
 
   var agingHTML = '<div style="background:#141618;border:0.5px solid #2c2c2a;border-radius:10px;padding:14px 16px;margin-bottom:16px;">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;">'
-    +   '<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;">Order Aging — All Statuses</div>'
+    +   '<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;">Order Aging — '+esc(agingHeaderSuffix)+'</div>'
     +   '<div style="font-size:11px;color:#888780;font-family:system-ui;">'+agingSummary+'</div>'
     + '</div>'
+    + agingStatusBar
     + agingCardsHTML
     + agingDrillHTML
     + '</div>';
