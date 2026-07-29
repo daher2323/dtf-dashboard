@@ -30,7 +30,6 @@
   .main-tab:not(.on) .main-tab-name { color: #5f5e5a; }
   .app-bar-right { display: flex; align-items: center; gap: 8px; padding-left: 16px; border-left: 0.5px solid #2c2c2a; margin-left: auto; flex-shrink: 0; }
   .sub-bar-outer { background: #0d1118; border-bottom: 0.5px solid #1a2030; position: sticky; top: 68px; z-index: 99; }
-  .cust-concentration-outer { background: #1e2124; border-bottom: 0.5px solid #2c2c2a; position: sticky; top: 68px; z-index: 99; display: none; }
   .cust-col-header-outer { background: #0d0f10; border-bottom: 0.5px solid #2c2c2a; position: sticky; top: 108px; z-index: 98; display: none; }
   .sub-divider { width: 0.5px; height: 20px; background: #2c2c2a; flex-shrink: 0; }
 
@@ -175,10 +174,9 @@
     .qtr-drilldown { flex-direction: column; gap: 12px; }
     .qtr-drilldown-sep { display: none; }
 
-    /* Sub-bar / column headers / concentration outer — relax sticky tops so
-       they don't pile on top of each other on a phone where the app-bar shrank. */
+    /* Sub-bar / column header — relax sticky tops so they don't pile on top of
+       each other on a phone where the app-bar shrank. */
     .sub-bar-outer { top: 56px; }
-    .cust-concentration-outer { top: 56px; }
     .cust-col-header-outer { top: 96px; }
   }
 
@@ -344,17 +342,17 @@
         <div class="main-tab-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#85B7EB" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="3" height="8" rx="1"/><rect x="6" y="6" width="3" height="6" rx="1"/><rect x="11" y="2" width="3" height="10" rx="1"/><line x1="1" y1="14" x2="15" y2="14"/></svg></div>
         <span class="main-tab-name">Production</span>
       </div>
-      <div class="main-tab" id="mtab-orders" onclick="setMainSection('orders')">
-        <div class="main-tab-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#444441" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="10" height="12" rx="1.5"/><line x1="5.5" y1="5" x2="10.5" y2="5"/><line x1="5.5" y1="8" x2="10.5" y2="8"/><line x1="5.5" y1="11" x2="9" y2="11"/></svg></div>
-        <span class="main-tab-name">Open Orders</span>
+      <div class="main-tab" id="mtab-sales" onclick="setMainSection('sales')">
+        <div class="main-tab-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#444441" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 1.5H2.5a1 1 0 0 0-1 1v6l6.5 6.5 7-7L8.5 1.5z"/><circle cx="5" cy="5" r="1"/></svg></div>
+        <span class="main-tab-name">Sales</span>
       </div>
       <div class="main-tab" id="mtab-procurement" onclick="setMainSection('procurement')">
         <div class="main-tab-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#444441" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5l6-3 6 3v6l-6 3-6-3V5z"/><path d="M2 5l6 3 6-3"/><line x1="8" y1="8" x2="8" y2="15"/></svg></div>
         <span class="main-tab-name">Procurement</span>
       </div>
-      <div class="main-tab" id="mtab-customers" onclick="setMainSection('customers')">
-        <div class="main-tab-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#444441" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.2"/><circle cx="11" cy="5" r="2.2"/><path d="M1 14c0-2.2 2.2-3.8 5-3.8"/><path d="M15 14c0-2.2-1.8-3.8-4-3.8"/><path d="M6 10.2c2.5-.5 5 .5 5 3.8"/></svg></div>
-        <span class="main-tab-name">Customers</span>
+      <div class="main-tab" id="mtab-logistics" onclick="setMainSection('logistics')">
+        <div class="main-tab-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#444441" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4h9v7H1z"/><path d="M10 6h3l2 2.5V11h-5z"/><circle cx="4" cy="13" r="1.4"/><circle cx="12" cy="13" r="1.4"/></svg></div>
+        <span class="main-tab-name">Logistics</span>
       </div>
       <div class="main-tab" id="mtab-quality" onclick="setMainSection('quality')">
         <div class="main-tab-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#444441" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5l5.5 2v4c0 3.4-2.3 6-5.5 7-3.2-1-5.5-3.6-5.5-7v-4z"/><path d="M5.8 8l1.6 1.6L10.4 6.4"/></svg></div>
@@ -368,10 +366,6 @@
   </div>
 </div>
 
-<!-- Customer concentration bar (sticky, shown only on customer overview) -->
-<div class="cust-concentration-outer" id="cust-concentration-outer">
-  <div id="cust-concentration-inner" style="max-width:1400px;margin:0 auto;width:100%;padding:0 1.5rem;"></div>
-</div>
 <!-- Sub-bar -->
 <div class="sub-bar-outer" id="sub-bar-outer">
   <div id="sub-bar" style="max-width:1400px;margin:0 auto;width:100%;display:flex;align-items:center;gap:8px;padding:.5rem 1.5rem;"></div>
@@ -469,6 +463,20 @@ var CSV_INVENTORY = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR0qIxGwCZP
 var CSV_DEMAND = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR0qIxGwCZPR0M4t9Q_XGMDSd5eFi1a46beypexJEcUMNZE5Sz5bLzZ7LqZqL7T5_REKjoqrOLyNN7f/pub?gid=249860558&single=true&output=csv';
 var CSV_OPEN_ORDERS_POWDER  = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0RbxQFw87S9yCUIENC5Y8XIptzLrXD3PNP37FjqYR1VsCe0AqQgMV9InGYROVjHYDDWj039vuoKzY/pub?gid=1505899317&single=true&output=csv';
 var CSV_OPEN_ORDERS_CAPSULE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0RbxQFw87S9yCUIENC5Y8XIptzLrXD3PNP37FjqYR1VsCe0AqQgMV9InGYROVjHYDDWj039vuoKzY/pub?gid=1877513131&single=true&output=csv';
+// Shipping / logistics tracker — a running freight-cost ledger, one row per line
+// item shipped. Parsed POSITIONALLY (parseLogistics): the sheet has a stray junk
+// row above the real header, the Date column is sparse and forward-fills from the
+// row(s) above, and it trails ~800 empty formula rows that still compute $0.00.
+// Published from the same lightweight spreadsheet that IMPORTRANGEs the materials/
+// inventory/demand feeds (shared 2PACX token) — isolating it from the heavy source
+// doc drops the cold fetch from tens of seconds to ~0.5s. Layout is mirrored as-is,
+// so the positional parse is unchanged.
+var CSV_LOGISTICS = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR0qIxGwCZPR0M4t9Q_XGMDSd5eFi1a46beypexJEcUMNZE5Sz5bLzZ7LqZqL7T5_REKjoqrOLyNN7f/pub?gid=238220375&single=true&output=csv';
+// Inbound / receiving log — same positional layout as outbound (junk row 0, header
+// row 1, forward-filling Date) but keyed on Vendor + PO# instead of Customer + Lot.
+// Published from the same lightweight IMPORTRANGE sheet as CSV_LOGISTICS (shared
+// 2PACX token, different gid) — fast cold fetch (~0.4s).
+var CSV_LOGISTICS_INBOUND = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR0qIxGwCZPR0M4t9Q_XGMDSd5eFi1a46beypexJEcUMNZE5Sz5bLzZ7LqZqL7T5_REKjoqrOLyNN7f/pub?gid=1212644212&single=true&output=csv';
 var materialsData = [];
 // Recall Tracking source. Same raw CSV_MATERIALS text parseMaterials() reads, but
 // parsed POSITIONALLY (by column index) so the four T#/QTY-Picked slots survive.
@@ -647,6 +655,7 @@ function renderAgingStatusBar(agingOrders) {
 
 var allRows = [], allRows25 = [], lotMap = {}, dailyTargets = {}, weeklyTargets = {};
 var mainSection = 'production'; // 'production' | 'customers' | 'procurement' | 'orders' | 'quality'
+                                // ('customers' and 'orders' are the two halves of the "Sales" top tab)
 var qualitySubTab = 'recall';   // Quality sub-tab; 'recall' is the only option today
 var topView = 'summary', subView = 'today';
 // Recall Tracking (transient view state). recallResult persists across re-renders
@@ -691,6 +700,23 @@ var customerChartView = 'all';      // 'all' | 'powder' | 'capsule'
 var customerChartLimit = '10';      // '10' | '25' | 'all'
 var customerDrilldown  = null;      // null | <brand name> — which customer row is expanded
 var agingDrilldown     = null;      // null | '4-8' | '8-12' | '12+' — which aging bucket is expanded
+// Logistics (shipping tracker) state
+var logisticsData = null;           // null = not yet fetched; array of OUTBOUND shipment records once loaded
+var logisticsLastFetch = 0;
+var logisticsFetchInFlight = false;
+var logisticsLoadError = false;     // true after a fetch exhausts its retries with no usable data
+var inboundData = null;             // INBOUND (receiving) records, same shape as logisticsData
+var inboundLastFetch = 0;
+var inboundFetchInFlight = false;
+var inboundLoadError = false;
+var logiDir = 'outbound';           // 'outbound' | 'inbound' — which direction the whole page shows
+var logiGran = 'monthly';           // 'daily' | 'weekly' | 'monthly' — scopes tiles + log (NOT the trend chart)
+var logiAnchor = null;              // Date within the selected period; null = current period (mirrors Production nav)
+var logiSearch = '';                // case-insensitive filter (product / customer / lot / carrier / tracking / BOL)
+var logiTrendMetric = 'shipments';  // 'shipments' | 'lots' | 'boxes' | 'pallets' — trend chart metric (granularity follows logiGran)
+var logiStatusFilter = 'all';       // 'all' | 'open' (in transit + pending pickup) | 'received' — inbound log filter
+var logiExpanded = {};              // shipmentKey -> true; expanded shipments in the log (persists across re-renders)
+var _logiShipmentsCache = null;     // last grouped shipments, reused by chart-toggle + log-expand without re-grouping
 
 // Part number -> display group name. Parts listed here roll up under one row.
 var SKU_GROUPS = {
@@ -1153,17 +1179,17 @@ function closeRoleMenu() {
 
 function applyRole() {
   var isAdmin = userRole === 'admin';
-  // Customers and Procurement tabs
-  var ct = document.getElementById('mtab-customers');
+  // Sales (Open Orders + Customers), Procurement, Logistics and Quality tabs are admin-only
+  var st = document.getElementById('mtab-sales');
   var pt = document.getElementById('mtab-procurement');
-  var ot = document.getElementById('mtab-orders');
+  var lt = document.getElementById('mtab-logistics');
   var rt = document.getElementById('mtab-quality');
-  if (ct) ct.style.display = isAdmin ? '' : 'none';
+  if (st) st.style.display = isAdmin ? '' : 'none';
   if (pt) pt.style.display = isAdmin ? '' : 'none';
-  if (ot) ot.style.display = isAdmin ? '' : 'none';
+  if (lt) lt.style.display = isAdmin ? '' : 'none';
   if (rt) rt.style.display = isAdmin ? '' : 'none';
   // If viewer lands on a restricted section, redirect to production/today
-  if (!isAdmin && (mainSection === 'customers' || mainSection === 'procurement' || mainSection === 'orders' || mainSection === 'quality')) {
+  if (!isAdmin && (mainSection === 'customers' || mainSection === 'procurement' || mainSection === 'orders' || mainSection === 'logistics' || mainSection === 'quality')) {
     mainSection = 'production';
     topView = 'summary';
     subView = 'today';
@@ -1697,6 +1723,247 @@ function fetchOpenOrdersIfNeeded(force) {
   });
 }
 
+// ── Logistics / shipping tracker ──────────────────────────────────────────
+// Fixed column positions in the logistics sheet (0-indexed). Parsed positionally
+// because the standard header-keyed parsers key off row 0, which here is stray junk
+// ("57300-3", "Food Supplements") — the real header lives on row 1.
+var LOGI_COL = {
+  date:0, lot:1, product:2, goingTo:3, boxes:6, units:7, pallets:11, carrier:12,
+  priceQuoted:14, pricePaid:15, broker:16, bol:17, tracking:18, eta:19, status:20,
+  boxCost:22, palletCost:23, laborCost:24, total:25
+};
+
+/* Dates DTF is closed. Excluded from business-day denominators.
+   Format 'YYYY-MM-DD'. Update annually.
+   EMPTY means holidays count as business days, which understates the per-day
+   rate. Candidate closures (2026 zero-shipment weekdays matching US holidays):
+   01-01, 01-19, 04-03, 05-25, 06-19, 07-03. Confirm with Alex before filling. */
+var DTF_HOLIDAYS = [];
+
+/* Weekday indices DTF ships on. 1 = Monday through 5 = Friday. */
+var DTF_SHIP_DAYS = [1, 2, 3, 4, 5];
+
+/* Buckets of history shown in the trend chart, ending at the selected period.
+   Weeks for the weekly view, business days for the daily view. */
+var TREND_WEEKS = 13;
+var TREND_DAYS = 20;
+
+// Parse the logistics CSV into shipment records. Returns null on empty/parse
+// failure so callers can keep the previous good fetch. Two quirks handled here:
+//   1. Date forward-fill — only ~6% of rows carry a date; a blank Date inherits
+//      the most recent date above it (that's how the sheet is meant to be read).
+//   2. Trailing filler — the sheet ends in ~800 empty rows that still compute
+//      Total Cost = $0.00 via formula. A row counts only if it has a Product Name
+//      or a Lot #; that drops the filler without dropping real non-lot line items
+//      (packaging, equipment, labels).
+function parseLogistics(text) {
+  if (!text) return null;
+  try {
+    var grid = parseCSVGrid(text);
+    if (!grid || grid.length < 3) return null;
+    function cell(cells, idx){ return (cells && cells[idx] != null) ? String(cells[idx]).trim() : ''; }
+    var out = [], lastDate = null, idx = 0;
+    for (var i = 2; i < grid.length; i++) {   // row 0 = junk, row 1 = header
+      var cells = grid[i];
+      if (!cells) continue;
+      var d = parseLocalDate(cell(cells, LOGI_COL.date));
+      // Reject typo'd/out-of-range years (e.g. a "3/1/206" missing a digit) so the
+      // row forward-fills from the date above instead of creating a bogus bucket.
+      if (d && (d.getFullYear() < 2020 || d.getFullYear() > 2035)) d = null;
+      if (d) lastDate = d;
+      var product = cell(cells, LOGI_COL.product);
+      var lot = cell(cells, LOGI_COL.lot);
+      if (!product && !lot) continue;         // skip trailing/blank formula rows
+      // Product follows the app-wide "Customer - Product" convention.
+      var customer = product.indexOf('-') !== -1 ? product.split('-')[0].trim() : product;
+      out.push({
+        _idx: idx++,
+        date: lastDate,
+        product: product,
+        lot: lot,
+        customer: customer,
+        goingTo: cell(cells, LOGI_COL.goingTo),
+        boxes: num(cell(cells, LOGI_COL.boxes)),
+        boxesRaw: cell(cells, LOGI_COL.boxes),  // kept so a blank Boxes cell reads as "not recorded", not 0
+        units: num(cell(cells, LOGI_COL.units)),
+        pallets: num(cell(cells, LOGI_COL.pallets)),
+        carrier: cell(cells, LOGI_COL.carrier),
+        broker: cell(cells, LOGI_COL.broker),
+        freight: num(cell(cells, LOGI_COL.pricePaid)),
+        bol: cell(cells, LOGI_COL.bol),
+        tracking: cell(cells, LOGI_COL.tracking),
+        eta: cell(cells, LOGI_COL.eta),
+        status: cell(cells, LOGI_COL.status),
+        boxCost: num(cell(cells, LOGI_COL.boxCost)),
+        palletCost: num(cell(cells, LOGI_COL.palletCost)),
+        laborCost: num(cell(cells, LOGI_COL.laborCost)),
+        total: num(cell(cells, LOGI_COL.total))
+      });
+    }
+    return out;
+  } catch(e) { return null; }
+}
+
+var LOGISTICS_CACHE_KEY = 'dtf_logistics_cache_v1';
+var LOGISTICS_CACHE_TTL = 2 * 60 * 1000;
+
+function _loadLogisticsCache() {
+  try {
+    var raw = sessionStorage.getItem(LOGISTICS_CACHE_KEY);
+    if (!raw) return;
+    var c = JSON.parse(raw);
+    if (!c || !Array.isArray(c.data)) return;
+    if (Date.now() - (c.ts || 0) > LOGISTICS_CACHE_TTL) return;
+    // Dates were serialized as ISO strings — rehydrate to Date objects.
+    c.data.forEach(function(r){ r.date = r.date ? new Date(r.date) : null; });
+    logisticsData = c.data;
+    logisticsLastFetch = c.ts;
+  } catch(e) { /* storage disabled or malformed — ignore */ }
+}
+
+function _saveLogisticsCache() {
+  try {
+    sessionStorage.setItem(LOGISTICS_CACHE_KEY, JSON.stringify({ data: logisticsData, ts: logisticsLastFetch }));
+  } catch(e) { /* quota exceeded or storage disabled — ignore */ }
+}
+
+// Fetch the logistics CSV in the background. Doesn't block page load. Called on
+// demand (entering the Logistics tab), warmed on initial load for admins, and by
+// the 5-min refresh timer.
+function fetchLogisticsIfNeeded(force) {
+  if (logisticsFetchInFlight) return;
+  var have = logisticsData !== null;
+  var stale = (Date.now() - logisticsLastFetch) > 60000;
+  if (!force && have && !stale) return;
+  logisticsFetchInFlight = true;
+  logisticsLoadError = false;
+  _logiFetchAttempt(5, 1500);
+}
+
+// One fetch attempt with a bounded retry. Uses fetchCSVSimple (NOT fetchWithRetry):
+// fetchWithRetry validates that the FIRST line contains "date"/"lot", but this
+// sheet's first line is a stray junk row (real header is row 1), so it would reject
+// every response and hang. fetchCSVSimple has no retry of its own, and the Sheets
+// CDN intermittently serves an empty/short body — so we retry here on any response
+// that doesn't parse into usable rows, then surface an error rather than spin forever.
+function _logiFetchAttempt(triesLeft, delay) {
+  fetchCSVSimple(CSV_LOGISTICS, true).then(function(text){
+    var parsed = parseLogistics(text);
+    // Stale-data guard: never overwrite good data with an empty/short response, and
+    // refuse a dataset that shrank >20% (a stale partial CSV). This ledger only grows.
+    var usable = parsed && parsed.length > 0 && !(logisticsData && parsed.length < logisticsData.length * 0.8);
+    if (usable) {
+      logisticsData = parsed;
+      logisticsLastFetch = Date.now();
+      logisticsFetchInFlight = false;
+      _saveLogisticsCache();
+      if (mainSection === 'logistics') render();
+      return;
+    }
+    if (triesLeft > 1) {
+      setTimeout(function(){ _logiFetchAttempt(triesLeft - 1, Math.round(delay * 1.5)); }, delay);
+    } else {
+      logisticsFetchInFlight = false;
+      logisticsLoadError = true;
+      if (mainSection === 'logistics' && logisticsData === null) render();  // show retry state, not an endless spinner
+    }
+  }).catch(function(){
+    if (triesLeft > 1) {
+      setTimeout(function(){ _logiFetchAttempt(triesLeft - 1, Math.round(delay * 1.5)); }, delay);
+    } else {
+      logisticsFetchInFlight = false;
+      logisticsLoadError = true;
+      if (mainSection === 'logistics' && logisticsData === null) render();
+    }
+  });
+}
+
+// ── Logistics: Inbound (receiving) ─────────────────────────────────────────
+// Same positional-parse pattern as the outbound sheet (junk row 0, header row 1,
+// forward-filling Date). Mapped into the SAME record shape as parseLogistics so the
+// grouping/tiles/trend/log code is shared: Vendor -> customer, PO# -> lot.
+var INBOUND_COL = { date:0, po:1, pallets:2, boxes:5, vendor:6, carrier:8, pricePaid:10, broker:12, bol:14, tracking:15, eta:16, status:17 };
+function parseInbound(text) {
+  if (!text) return null;
+  try {
+    var grid = parseCSVGrid(text);
+    if (!grid || grid.length < 3) return null;
+    function cell(cells, idx){ return (cells && cells[idx] != null) ? String(cells[idx]).trim() : ''; }
+    var out = [], lastDate = null, idx = 0;
+    for (var i = 2; i < grid.length; i++) {
+      var cells = grid[i]; if (!cells) continue;
+      var d = parseLocalDate(cell(cells, INBOUND_COL.date));
+      if (d && (d.getFullYear() < 2020 || d.getFullYear() > 2035)) d = null;
+      if (d) lastDate = d;
+      var vendor = cell(cells, INBOUND_COL.vendor), po = cell(cells, INBOUND_COL.po);
+      if (!vendor && !po) continue;   // skip blank/filler rows
+      out.push({
+        _idx: idx++,
+        date: lastDate,
+        product: '',                  // inbound line has no product; the PO number is its id
+        lot: po,                      // PO# plays the role of the line id (kept a string)
+        customer: vendor,             // vendor is the grouping entity
+        goingTo: '',
+        boxes: num(cell(cells, INBOUND_COL.boxes)),
+        boxesRaw: cell(cells, INBOUND_COL.boxes),
+        units: 0,
+        pallets: num(cell(cells, INBOUND_COL.pallets)),
+        carrier: cell(cells, INBOUND_COL.carrier),
+        broker: cell(cells, INBOUND_COL.broker),
+        freight: num(cell(cells, INBOUND_COL.pricePaid)),
+        bol: cell(cells, INBOUND_COL.bol),
+        tracking: cell(cells, INBOUND_COL.tracking),
+        eta: cell(cells, INBOUND_COL.eta),
+        status: cell(cells, INBOUND_COL.status)
+      });
+    }
+    return out;
+  } catch(e) { return null; }
+}
+
+var INBOUND_CACHE_KEY = 'dtf_inbound_cache_v1';
+function _loadInboundCache() {
+  try {
+    var raw = sessionStorage.getItem(INBOUND_CACHE_KEY);
+    if (!raw) return;
+    var c = JSON.parse(raw);
+    if (!c || !Array.isArray(c.data)) return;
+    if (Date.now() - (c.ts || 0) > LOGISTICS_CACHE_TTL) return;
+    c.data.forEach(function(r){ r.date = r.date ? new Date(r.date) : null; });
+    inboundData = c.data; inboundLastFetch = c.ts;
+  } catch(e) { /* storage disabled or malformed — ignore */ }
+}
+function _saveInboundCache() {
+  try { sessionStorage.setItem(INBOUND_CACHE_KEY, JSON.stringify({ data: inboundData, ts: inboundLastFetch })); } catch(e) {}
+}
+// Mirrors fetchLogisticsIfNeeded / _logiFetchAttempt for the inbound feed.
+function fetchInboundIfNeeded(force) {
+  if (inboundFetchInFlight) return;
+  var have = inboundData !== null;
+  var stale = (Date.now() - inboundLastFetch) > 60000;
+  if (!force && have && !stale) return;
+  inboundFetchInFlight = true;
+  inboundLoadError = false;
+  _inboundFetchAttempt(5, 1500);
+}
+function _inboundFetchAttempt(triesLeft, delay) {
+  fetchCSVSimple(CSV_LOGISTICS_INBOUND, true).then(function(text){
+    var parsed = parseInbound(text);
+    var usable = parsed && parsed.length > 0 && !(inboundData && parsed.length < inboundData.length * 0.8);
+    if (usable) {
+      inboundData = parsed; inboundLastFetch = Date.now(); inboundFetchInFlight = false;
+      _saveInboundCache();
+      if (mainSection === 'logistics' && logiDir === 'inbound') render();
+      return;
+    }
+    if (triesLeft > 1) { setTimeout(function(){ _inboundFetchAttempt(triesLeft - 1, Math.round(delay * 1.5)); }, delay); }
+    else { inboundFetchInFlight = false; inboundLoadError = true; if (mainSection === 'logistics' && logiDir === 'inbound' && inboundData === null) render(); }
+  }).catch(function(){
+    if (triesLeft > 1) { setTimeout(function(){ _inboundFetchAttempt(triesLeft - 1, Math.round(delay * 1.5)); }, delay); }
+    else { inboundFetchInFlight = false; inboundLoadError = true; if (mainSection === 'logistics' && logiDir === 'inbound' && inboundData === null) render(); }
+  });
+}
+
 // Parse a Lot # reference sheet (columns: Lot #, Brand Name, Product Name,
 // Exp. Date, Amt, Brand Name - Product Name). Returns a lot→{combined} map
 // where `combined` matches the production-log "Customer - Product" format.
@@ -2054,7 +2321,7 @@ function loadDashboard() {
     // Warm the Procurement data (admin-only tab) during initial load so the slow
     // inventory fetch overlaps with login + the Production view, and Materials is
     // usually ready by the time the user navigates there.
-    if (userRole === 'admin') { fetchOpenOrdersIfNeeded(false); fetchInventoryIfNeeded(); fetchDemandIfNeeded(); }
+    if (userRole === 'admin') { fetchOpenOrdersIfNeeded(false); fetchInventoryIfNeeded(); fetchDemandIfNeeded(); fetchLogisticsIfNeeded(false); fetchInboundIfNeeded(false); }
     // Safety net: if daily view looks empty after load, re-fetch once after a short delay
     // Guards against Google Sheets CDN serving a stale response on first hit.
     // fresh=true bypasses the bucket so this retry can't reuse the same stale
@@ -2270,7 +2537,7 @@ function startRefreshTimers() {
     // a stale 30s-bucketed response — needed for auto-refresh to actually
     // pick up new rows the operators just published.
     if(topView==='summary'&&subView==='performance'||topView==='detail') refreshAndRender(false, false, true);
-    if(userRole==='admin') fetchOpenOrdersIfNeeded(false);
+    if(userRole==='admin') { fetchOpenOrdersIfNeeded(false); if(mainSection==='logistics') _logiFetchActive(); }
   }, 5*60*1000);
   todayTimer = setInterval(function(){
     checkDateRollover();
@@ -2331,30 +2598,40 @@ function hideColTip() {
 
 function setMainSection(s) {
   closeMsPanel();
+  // 'sales' is a virtual umbrella tab over the internal 'orders' and 'customers'
+  // sections. Clicking it lands on Open Orders → Summary, unless you're already
+  // inside Sales — in which case keep whichever sub-view you were on.
+  if (s === 'sales') {
+    if (mainSection === 'orders' || mainSection === 'customers') { renderSubBar(); render(); return; }
+    s = 'orders';
+    ordersView = 'summary';
+  }
   mainSection = s;
   trackEvent('tab_view', { tab_name: s === 'orders' ? 'open_orders' : s });
   // Hide customer col header when not on customers
   var hdrOuter = document.getElementById('cust-col-header-outer');
   if(hdrOuter && s !== 'customers') hdrOuter.style.display = 'none';
-  ['production','customers','procurement','orders','quality'].forEach(function(k) {
+  // 'orders' and 'customers' both light up the single Sales tab.
+  ['production','sales','procurement','logistics','quality'].forEach(function(k) {
     var t = document.getElementById('mtab-' + k);
     if (!t) return;
-    var isOn = k === s;
+    var isOn = (k === 'sales') ? (s === 'orders' || s === 'customers') : (k === s);
     t.className = 'main-tab' + (isOn ? ' on' : '');
     var ico = t.querySelector('.main-tab-icon');
     if (ico) {
       var onColor = '#85B7EB';
       var svgs = {
         production:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="'+(isOn?onColor:'#444441')+'" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="3" height="8" rx="1"/><rect x="6" y="6" width="3" height="6" rx="1"/><rect x="11" y="2" width="3" height="10" rx="1"/><line x1="1" y1="14" x2="15" y2="14"/></svg>',
-        customers:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="'+(isOn?onColor:'#444441')+'" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2.2"/><circle cx="11" cy="5" r="2.2"/><path d="M1 14c0-2.2 2.2-3.8 5-3.8"/><path d="M15 14c0-2.2-1.8-3.8-4-3.8"/><path d="M6 10.2c2.5-.5 5 .5 5 3.8"/></svg>',
+        sales:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="'+(isOn?onColor:'#444441')+'" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 1.5H2.5a1 1 0 0 0-1 1v6l6.5 6.5 7-7L8.5 1.5z"/><circle cx="5" cy="5" r="1"/></svg>',
         procurement:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="'+(isOn?onColor:'#444441')+'" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5l6-3 6 3v6l-6 3-6-3V5z"/><path d="M2 5l6 3 6-3"/><line x1="8" y1="8" x2="8" y2="15"/></svg>',
-        orders:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="'+(isOn?onColor:'#444441')+'" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="10" height="12" rx="1.5"/><line x1="5.5" y1="5" x2="10.5" y2="5"/><line x1="5.5" y1="8" x2="10.5" y2="8"/><line x1="5.5" y1="11" x2="9" y2="11"/></svg>',
+        logistics:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="'+(isOn?onColor:'#444441')+'" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4h9v7H1z"/><path d="M10 6h3l2 2.5V11h-5z"/><circle cx="4" cy="13" r="1.4"/><circle cx="12" cy="13" r="1.4"/></svg>',
         quality:'<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="'+(isOn?onColor:'#444441')+'" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5l5.5 2v4c0 3.4-2.3 6-5.5 7-3.2-1-5.5-3.6-5.5-7v-4z"/><path d="M5.8 8l1.6 1.6L10.4 6.4"/></svg>'
       };
       ico.innerHTML = svgs[k] || '';
     }
   });
   if (s === 'orders') fetchOpenOrdersIfNeeded(false);
+  if (s === 'logistics') _logiFetchActive();
   renderSubBar();
   render();
 }
@@ -2364,6 +2641,16 @@ function setMainSection(s) {
 function renderSubBar() {
   var sb = document.getElementById('sub-bar');
   if (!sb) return;
+
+  // Primary toggle shared by both halves of the Sales section (Open Orders /
+  // Customers). Switching flips the internal mainSection; each half then draws
+  // its own secondary controls after the divider.
+  var salesToggle =
+    '<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
+    + '<button onclick="setMainSection(\'orders\')" style="'+navBtnStyle(mainSection==='orders')+'">Open Orders</button>'
+    + '<button onclick="setMainSection(\'customers\')" style="'+navBtnStyle(mainSection==='customers')+'">Customers</button>'
+    + '</div>'
+    + '<div class="sub-divider"></div>';
 
   if (mainSection === 'production') {
     var isAdmin = userRole === 'admin';
@@ -2383,14 +2670,16 @@ function renderSubBar() {
   } else if (mainSection === 'customers') {
     if (selectedCustomer) {
       sb.innerHTML =
-        '<button onclick="selectCustomer(null)" style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;border:0.5px solid #444441;background:transparent;cursor:pointer;color:#888780;font-size:12px;font-family:system-ui;" onmouseover="this.style.background=\'#1a1d20\'" onmouseout="this.style.background=\'transparent\'">'
+        salesToggle
+        + '<button onclick="selectCustomer(null)" style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;border:0.5px solid #444441;background:transparent;cursor:pointer;color:#888780;font-size:12px;font-family:system-ui;" onmouseover="this.style.background=\'#1a1d20\'" onmouseout="this.style.background=\'transparent\'">'
         + '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><polyline points="7,2 3,6 7,10" stroke="#888780" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
         + 'All customers</button>'
         + '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><polyline points="3,2 7,5 3,8" stroke="#444441" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
         + '<span style="font-size:12px;font-weight:500;color:#e8e6e0;">'+esc(selectedCustomer)+'</span>';
     } else {
       sb.innerHTML =
-        '<div style="flex:1;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">'
+        salesToggle
+        + '<div style="flex:1;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">'
         + '<div style="display:flex;gap:2px;padding:3px;background:#1a1d20;border:0.5px solid #2c2c2a;border-radius:8px;">'
         +   '<button onclick="setCustLimit(10)" style="'+navBtnStyle(custLimit===10)+'">Top 10</button>'
         +   '<button onclick="setCustLimit(25)" style="'+navBtnStyle(custLimit===25)+'">Top 25</button>'
@@ -2416,10 +2705,28 @@ function renderSubBar() {
       + '</div>';
   } else if (mainSection === 'orders') {
     sb.innerHTML =
-      '<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
+      salesToggle
+      + '<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
       + '<button onclick="setOrdersView(\'summary\')"  style="'+navBtnStyle(ordersView==='summary')+'">Summary</button>'
       + '<button onclick="setOrdersView(\'labels\')"   style="'+navBtnStyle(ordersView==='labels')+'">Labels</button>'
       + '<button onclick="setOrdersView(\'planning\')" style="'+navBtnStyle(ordersView==='planning')+'">Planning</button>'
+      + '</div>';
+  } else if (mainSection === 'logistics') {
+    // Logistics sub-bar: Outbound/Inbound direction toggle + Daily/Weekly/Monthly
+    // granularity. Search lives at the top-right of the log; the period navigator
+    // (‹ label ▾ ›) lives in the content.
+    sb.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+      + '<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
+      +   '<button onclick="setLogiDir(\'outbound\')" style="'+navBtnStyle(logiDir==='outbound')+'">Outbound</button>'
+      +   '<button onclick="setLogiDir(\'inbound\')"  style="'+navBtnStyle(logiDir==='inbound')+'">Inbound</button>'
+      + '</div>'
+      + '<div class="sub-divider"></div>'
+      + '<div style="display:flex;gap:2px;padding:3px;background:#1a1d20;border:0.5px solid #2c2c2a;border-radius:8px;">'
+      +   '<button onclick="setLogiGran(\'daily\')"   style="'+navBtnStyle(logiGran==='daily')+'">Daily</button>'
+      +   '<button onclick="setLogiGran(\'weekly\')"  style="'+navBtnStyle(logiGran==='weekly')+'">Weekly</button>'
+      +   '<button onclick="setLogiGran(\'monthly\')" style="'+navBtnStyle(logiGran==='monthly')+'">Monthly</button>'
+      + '</div>'
       + '</div>';
   } else if (mainSection === 'quality') {
     // Quality sub-tab bar — same segmented pattern as Procurement. Built as a real
@@ -2433,6 +2740,83 @@ function renderSubBar() {
   } else {
     sb.innerHTML = '';
   }
+}
+
+// ── Logistics nav handlers ────────────────────────────────────────────────
+function setLogiDir(dir) {
+  closeMsPanel(); closeLogiPicker();
+  logiDir = dir;
+  if (dir === 'inbound' && logiTrendMetric === 'units') logiTrendMetric = 'shipments';  // no units toggle inbound
+  logiSearch = '';              // search terms don't carry across outbound/inbound
+  _logiShipmentsCache = null;   // force a regroup of the newly-active dataset
+  _logiFetchActive();           // lazy-load the direction's feed on first switch
+  renderSubBar();
+  render();
+}
+function setLogiGran(g) {
+  closeMsPanel(); closeLogiPicker();
+  logiGran = g;                 // keep the current anchor across granularity switches
+  renderSubBar();
+  render();
+}
+// Step the selected period by one unit (mirrors Production's navDay/navWeek).
+function navLogi(dir) {
+  closeLogiPicker();
+  var today = new Date();
+  var b = periodBounds(logiGran, _logiAnchorDate(), today);
+  var t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  var a;
+  if (logiGran === 'daily') {
+    // Skip non-business days (weekends/holidays) that have no shipments — but land
+    // on a weekend that DOES have data. Mirrors the Production daily navigator.
+    var set = _logiDataDaySet(), e = _logiEarliest(), eDay = new Date(e.getFullYear(), e.getMonth(), e.getDate());
+    a = new Date(b.start); var guard = 0;
+    do {
+      a.setDate(a.getDate() + dir); guard++;
+      if (dir > 0 && a >= t0) { a = new Date(t0); break; }
+      if (dir < 0 && a <= eDay) { a = new Date(eDay); break; }
+    } while (guard < 400 && !isBusinessDay(a) && !set[_logiYMD(a)]);
+  } else if (logiGran === 'weekly') { a = new Date(b.start); a.setDate(a.getDate() + dir * 7); }
+  else { a = new Date(b.start.getFullYear(), b.start.getMonth() + dir, 1); }
+  if (a > t0) a = t0;           // never step into the future
+  logiAnchor = a;
+  render();
+}
+function goLogiLive() { closeLogiPicker(); logiAnchor = null; render(); }
+function retryLogistics() {
+  logisticsLoadError = false;
+  fetchLogisticsIfNeeded(true);  // force a fresh fetch
+  render();                      // back to the loading spinner while it retries
+}
+// Trend toggles mutate the existing chart in place and restyle the toggle bar —
+// a full render would tear the chart down. The trend is period-independent.
+function setLogiTrendMetric(m) { logiTrendMetric = m; _updateLogiTrend(); }
+// Expand/collapse one shipment; re-render only the log host so chart + tiles stay.
+function toggleLogiShipment(key) {
+  logiExpanded[key] = !logiExpanded[key];
+  var host = document.getElementById('logi-log-host');
+  if (!host) return;
+  var ships = _logiShipmentsCache || groupLotsToShipments(_logiActiveData() || []);
+  host.innerHTML = _logiLogHTML(ships, periodBounds(logiGran, _logiAnchorDate(), new Date()));
+}
+function onLogiSearchInput(v) {
+  logiSearch = v || '';
+  var clr = document.getElementById('logiSearchClear');
+  if (clr) clr.style.display = logiSearch ? 'inline-flex' : 'none';
+  // Re-render only the log host so the search input keeps focus + caret.
+  var host = document.getElementById('logi-log-host');
+  if (host) host.innerHTML = _logiLogHTML(_logiShipmentsCache || groupLotsToShipments(_logiActiveData() || []), periodBounds(logiGran, _logiAnchorDate(), new Date()));
+  else render();
+}
+function clearLogiSearch() {
+  logiSearch = '';
+  var inp = document.getElementById('logiSearchInput');
+  if (inp) { inp.value = ''; inp.focus(); }
+  var clr = document.getElementById('logiSearchClear');
+  if (clr) clr.style.display = 'none';
+  var host = document.getElementById('logi-log-host');
+  if (host) host.innerHTML = _logiLogHTML(_logiShipmentsCache || groupLotsToShipments(_logiActiveData() || []), periodBounds(logiGran, _logiAnchorDate(), new Date()));
+  else render();
 }
 
 function setOrdersView(v) {
@@ -2553,6 +2937,685 @@ function setQualitySubTab(v) {
 function renderQuality() {
   if (qualitySubTab === 'recall') { renderRecall(); return; }
   renderRecall(); // default/fallback until more sub-tabs exist
+}
+
+// ══ Logistics — shipping throughput ═══════════════════════════════════════
+// One view: period-scoped throughput tiles, a period-independent trend chart, and
+// a day -> shipment -> lot log. Grouping stays date + customer (a shipment is one
+// customer's dispatch on a day). Cost fields are still parsed but unreferenced here.
+
+function _logiInt(n) { return Math.round(n || 0).toLocaleString(); }
+function _logiYMD(d) { function p(n){ return n < 10 ? '0' + n : '' + n; } return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+
+// ── Direction (outbound / inbound) plumbing ────────────────────────────────
+// Both feeds parse to the same record shape, so the grouping/tiles/trend/log all
+// operate on whichever direction is active; only labels differ (see _logiLabels).
+function _logiActiveData() { return logiDir === 'inbound' ? inboundData : logisticsData; }
+function _logiActiveError() { return logiDir === 'inbound' ? inboundLoadError : logisticsLoadError; }
+function _logiFetchActive() { if (logiDir === 'inbound') fetchInboundIfNeeded(false); else fetchLogisticsIfNeeded(false); }
+function _logiLabels() {
+  if (logiDir === 'inbound') {
+    return { unit:'Deliveries', unitOne:'delivery', unitMany:'deliveries', line:'POs received', lineShort:'POs', per:'POs per delivery',
+      entity:'Vendor', pickup:false, search:'Search PO, vendor, carrier, tracking…', pickupWord:'self-pickup', lineIdPrefix:'PO',
+      showStatus:true, showBoxesNote:false, showUnits:false };
+  }
+  return { unit:'Shipments', unitOne:'shipment', unitMany:'shipments', line:'Lots shipped', lineShort:'Lots', per:'lots per shipment',
+    entity:'Customer', pickup:true, search:'Search product, lot, carrier, tracking…', pickupWord:'customer pickup', lineIdPrefix:'Lot',
+    showStatus:false, showBoxesNote:true, showUnits:true };
+}
+
+// 2.1 — business day: weekday in DTF_SHIP_DAYS and not a holiday.
+function isBusinessDay(d) {
+  if (DTF_SHIP_DAYS.indexOf(d.getDay()) === -1) return false;
+  return DTF_HOLIDAYS.indexOf(_logiYMD(d)) === -1;
+}
+// 2.2 — inclusive business-day count.
+function countBusinessDays(start, end) {
+  var d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  var e = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  var n = 0;
+  while (d <= e) { if (isBusinessDay(d)) n++; d.setDate(d.getDate() + 1); }
+  return n;
+}
+function _logiMondayOf(d) {
+  var x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  var wd = x.getDay(), diff = (wd === 0) ? 6 : (wd - 1);
+  x.setDate(x.getDate() - diff);
+  return x;
+}
+function _logiFirstNBusinessDays(startDate, N) {
+  var start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  if (N <= 0) return { start: start, end: start, count: 0 };
+  var d = new Date(start), count = 0, last = new Date(start), guard = 0;
+  while (count < N && guard < 400) { if (isBusinessDay(d)) { count++; last = new Date(d); } d.setDate(d.getDate() + 1); guard++; }
+  return { start: start, end: last, count: count };
+}
+var _LOGI_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var _LOGI_WDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function _logiRangeLabel(a, b) {
+  if (a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()) {
+    if (a.getDate() === b.getDate()) return _LOGI_WDAYS[a.getDay()] + ', ' + _LOGI_MONTHS[a.getMonth()] + ' ' + a.getDate();
+    return _LOGI_MONTHS[a.getMonth()] + ' ' + a.getDate() + ' – ' + b.getDate();
+  }
+  return _LOGI_MONTHS[a.getMonth()] + ' ' + a.getDate() + ' – ' + _LOGI_MONTHS[b.getMonth()] + ' ' + b.getDate();
+}
+// The anchor day of the selected period (null anchor = current period).
+function _logiAnchorDate() { return logiAnchor ? logiAnchor : new Date(); }
+// 2.3 — bounds for a period (gran + anchor day). Also returns a navigator label
+// and isCurrent (the period contains today, so it's still in progress).
+function periodBounds(gran, anchor, today) {
+  var t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  var a = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+  if (a > t0) a = new Date(t0);
+  var start, end, isCurrent, label;
+  if (gran === 'daily') {
+    start = new Date(a); end = new Date(a);
+    isCurrent = start.getTime() === t0.getTime();
+    label = _LOGI_WDAYS[start.getDay()] + ', ' + _LOGI_MONTHS[start.getMonth()] + ' ' + start.getDate() + ', ' + start.getFullYear();
+  } else if (gran === 'weekly') {
+    start = _logiMondayOf(a);
+    var sun = new Date(start); sun.setDate(start.getDate() + 6);
+    isCurrent = (t0 >= start && t0 <= sun);
+    end = isCurrent ? new Date(t0) : new Date(sun);
+    var endBit = (start.getMonth() === sun.getMonth()) ? sun.getDate() : (_LOGI_MONTHS[sun.getMonth()] + ' ' + sun.getDate());
+    label = 'Week ' + getWeekNum(start) + ' · ' + _LOGI_MONTHS[start.getMonth()] + ' ' + start.getDate() + ' – ' + endBit + ', ' + sun.getFullYear();
+  } else {
+    start = new Date(a.getFullYear(), a.getMonth(), 1);
+    var last = new Date(a.getFullYear(), a.getMonth() + 1, 0);
+    isCurrent = (a.getFullYear() === t0.getFullYear() && a.getMonth() === t0.getMonth());
+    end = isCurrent ? new Date(t0) : new Date(last);
+    label = _LOGI_MONTHS[start.getMonth()] + ' ' + start.getFullYear();
+  }
+  return { start: start, end: end, businessDays: countBusinessDays(start, end), label: label, isCurrent: isCurrent, gran: gran };
+}
+// 2.4 — prior-period bounds. A current, in-progress period compares against the
+// prior period's first N business days (like-for-like); a past, complete period
+// compares against the full period immediately before it.
+function priorPeriodBounds(gran, anchor, today) {
+  var cur = periodBounds(gran, anchor, today);
+  if (gran === 'daily') {
+    var d = new Date(cur.start), g = 0;
+    do { d.setDate(d.getDate() - 1); g++; } while (!isBusinessDay(d) && g < 14);
+    return { start: new Date(d), end: new Date(d), businessDays: 1, label: 'vs ' + _LOGI_WDAYS[d.getDay()] + ' ' + _LOGI_MONTHS[d.getMonth()] + ' ' + d.getDate() };
+  }
+  if (gran === 'weekly') {
+    var pm = new Date(cur.start); pm.setDate(pm.getDate() - 7);
+    if (cur.isCurrent) { var s = _logiFirstNBusinessDays(pm, cur.businessDays); return { start: s.start, end: s.end, businessDays: s.count, label: 'vs ' + _logiRangeLabel(s.start, s.end) }; }
+    var sun = new Date(pm); sun.setDate(pm.getDate() + 6);
+    return { start: pm, end: sun, businessDays: countBusinessDays(pm, sun), label: 'vs ' + _logiRangeLabel(pm, sun) };
+  }
+  var fp = new Date(cur.start.getFullYear(), cur.start.getMonth() - 1, 1);
+  if (cur.isCurrent) { var s2 = _logiFirstNBusinessDays(fp, cur.businessDays); return { start: s2.start, end: s2.end, businessDays: s2.count, label: 'vs ' + _logiRangeLabel(s2.start, s2.end) }; }
+  var lp = new Date(cur.start.getFullYear(), cur.start.getMonth(), 0);
+  return { start: fp, end: lp, businessDays: countBusinessDays(fp, lp), label: 'vs ' + _logiRangeLabel(fp, lp) };
+}
+
+// Carrier class from Carrier + Broker (pickup lives in Broker; parcel in either).
+var _LOGI_PARCEL = ['UPS','FEDEX','FED EX'], _LOGI_PICKUP = ['CUST PICK','PICKUP','PICK UP','CUSTOMER PICK'];
+function carrierClass(carrier, broker) {
+  var c = (carrier == null ? '' : String(carrier)).trim().toUpperCase();
+  var b = (broker == null ? '' : String(broker)).trim().toUpperCase();
+  if (!c && !b) return 'none';
+  var both = c + ' ' + b, i;
+  for (i = 0; i < _LOGI_PICKUP.length; i++) if (both.indexOf(_LOGI_PICKUP[i]) !== -1) return 'pickup';
+  for (i = 0; i < _LOGI_PARCEL.length; i++) if (both.indexOf(_LOGI_PARCEL[i]) !== -1) return 'parcel';
+  return 'freight';
+}
+// 2.6 — lot number stays a trimmed string. Never Number()/parseInt().
+function lotKey(row) { return (row.lot == null ? '' : String(row.lot)).trim(); }
+function _boxRecorded(row) { var s = (row.boxesRaw == null ? '' : String(row.boxesRaw)).trim(); return s !== '' && /\d/.test(s); }
+// 2.5 — a shipment with pallets but no boxes recorded is NOT a zero-box shipment.
+function boxesForShipment(shipment) { return { boxes: shipment.boxes, recorded: shipment.boxesRecorded }; }
+
+// Grouping: date + customer -> one shipment object. Same rule as the working log.
+function groupLotsToShipments(recs) {
+  var buckets = {}, order = [], i;
+  for (i = 0; i < recs.length; i++) {
+    var r = recs[i];
+    if (!r.date) continue;
+    var k = _logiYMD(r.date) + '' + (r.customer || '').toUpperCase();
+    if (!buckets[k]) { buckets[k] = { key: k, date: r.date, customer: r.customer, rows: [] }; order.push(k); }
+    buckets[k].rows.push(r);
+  }
+  var out = [];
+  for (i = 0; i < order.length; i++) out.push(_logiBuildShipment(buckets[order[i]]));
+  return out;
+}
+// Stick/sample packs are (for now) identified only by a 6-digit lot number vs the
+// 7-digit standard. Their per-unit counts are huge and inflate the units total, so
+// they're tracked separately from standard units throughout the view.
+function _logiIsStick(lotNo) { return /^\d{6}$/.test((lotNo == null ? '' : String(lotNo)).trim()); }
+function _logiBuildShipment(bucket) {
+  var rows = bucket.rows, boxes = 0, pallets = 0, units = 0, stickUnits = 0, boxesRecorded = false;
+  var carrier = '', reference = '', eta = '', lots = [], firstStatus = '';
+  var anyPickup = false, firstParcel = false, firstFreight = false;
+  var inTransit = false, pendingPickup = false, canceled = false, i;
+  for (i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var u = r.units || 0, stick = _logiIsStick(r.lot);
+    if (stick) stickUnits += u; else units += u;
+    boxes += (r.boxes || 0); pallets += (r.pallets || 0);
+    if (_boxRecorded(r)) boxesRecorded = true;
+    if (!carrier && r.carrier) carrier = r.carrier;
+    if (!reference && (r.tracking || r.bol)) reference = r.tracking || r.bol;
+    if (!eta && r.eta) eta = r.eta;
+    if (!firstStatus && r.status) firstStatus = r.status;
+    var su = (r.status || '').toLowerCase();
+    if (su.indexOf('transit') !== -1) inTransit = true;
+    else if (su.indexOf('pending') !== -1 || su.indexOf('pickup') !== -1) pendingPickup = true;
+    else if (su.indexOf('cancel') !== -1) canceled = true;
+    lots.push({ lotNo: lotKey(r), product: r.product, boxes: r.boxes || 0, pallets: r.pallets || 0, units: u, stick: stick });
+    var cc = carrierClass(r.carrier, r.broker);
+    if (cc === 'pickup') anyPickup = true;
+    else if (cc === 'parcel') firstParcel = true;
+    else if (cc === 'freight') firstFreight = true;
+  }
+  var klass = anyPickup ? 'pickup' : (firstParcel ? 'parcel' : (firstFreight ? 'freight' : 'none'));
+  // Representative status: surface an in-progress state (In Transit / Pending
+  // Pickup) if any member line has one; otherwise fall back to the first status.
+  var status = inTransit ? 'In Transit' : pendingPickup ? 'Pending Pickup' : (firstStatus || (canceled ? 'Canceled' : ''));
+  return { key: bucket.key, date: bucket.date, customer: bucket.customer, lots: lots,
+    boxes: boxes, pallets: pallets, units: units, stickUnits: stickUnits, boxesRecorded: boxesRecorded,
+    carrier: carrier, carrierClass: klass, reference: reference, eta: eta, status: status };
+}
+
+// 3.1 — throughput over shipments within bounds.
+function computeThroughput(shipments, bounds) {
+  var n = 0, lots = 0, boxes = 0, pallets = 0, units = 0, stickUnits = 0, pickup = 0, i, entSet = {};
+  for (i = 0; i < shipments.length; i++) {
+    var s = shipments[i];
+    if (!s.date || s.date < bounds.start || s.date > bounds.end) continue;
+    n++; lots += s.lots.length; boxes += s.boxes; pallets += s.pallets;
+    units += (s.units || 0); stickUnits += (s.stickUnits || 0);
+    if (s.carrierClass === 'pickup') pickup++;
+    entSet[(s.customer || '').toUpperCase()] = true;
+  }
+  var entities = 0, ek; for (ek in entSet) if (entSet.hasOwnProperty(ek)) entities++;
+  var bd = bounds.businessDays || 0;
+  return { shipments: n, lots: lots, boxes: boxes, pallets: pallets, units: units, stickUnits: stickUnits, entities: entities,
+    lotsPerShipment: n ? (lots / n) : 0,
+    unitsPerShipment: n ? (units / n) : 0,
+    shipmentsPerDay: bd ? (n / bd) : 0,
+    palletsPerDay: bd ? (pallets / bd) : 0,
+    boxesPerDay: bd ? (boxes / bd) : 0,
+    unitsPerDay: bd ? (units / bd) : 0,
+    pickupShipments: pickup,
+    pickupPct: n ? (pickup / n * 100) : 0 };
+}
+function _logiAggRange(shipments, start, end) {
+  var n = 0, lots = 0, boxes = 0, pallets = 0, units = 0, i;
+  for (i = 0; i < shipments.length; i++) { var s = shipments[i]; if (s.date && s.date >= start && s.date <= end) { n++; lots += s.lots.length; boxes += s.boxes; pallets += s.pallets; units += (s.units || 0); } }
+  return { shipments: n, lots: lots, boxes: boxes, pallets: pallets, units: units };
+}
+// 3.3 — trend series at the ACTIVE granularity (logiGran), showing the history
+// leading up to and including the selected period, which is the last (highlighted)
+// bucket. Granularity follows the top toggle so the whole view speaks one time unit.
+function computeTrendSeries(shipments, gran, anchor, today) {
+  var t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  var a = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
+  if (a > t0) a = new Date(t0);
+  var labels = [], sh = [], lt = [], bo = [], pa = [], un = [], i;
+  function push(s, e, label) { var g = _logiAggRange(shipments, s, e); labels.push(label); sh.push(g.shipments); lt.push(g.lots); bo.push(g.boxes); pa.push(g.pallets); un.push(g.units); }
+  if (gran === 'daily') {
+    var days = [], d = new Date(a), guard = 0;
+    while (days.length < TREND_DAYS && guard < 500) { if (isBusinessDay(d)) days.unshift(new Date(d)); d.setDate(d.getDate() - 1); guard++; }
+    for (i = 0; i < days.length; i++) {
+      var dd = days[i], de = new Date(dd); de.setHours(23, 59, 59, 999);
+      push(new Date(dd.getFullYear(), dd.getMonth(), dd.getDate()), de, _LOGI_MONTHS[dd.getMonth()] + ' ' + dd.getDate());
+    }
+  } else if (gran === 'weekly') {
+    var selMon = _logiMondayOf(a);
+    for (i = TREND_WEEKS - 1; i >= 0; i--) {
+      var s0 = new Date(selMon); s0.setDate(selMon.getDate() - i * 7);
+      var e0 = new Date(s0); e0.setDate(s0.getDate() + 6); e0.setHours(23, 59, 59, 999);
+      push(new Date(s0), e0, _LOGI_MONTHS[s0.getMonth()] + ' ' + s0.getDate());
+    }
+  } else {
+    var earliest = _logiEarliest(), cy = earliest.getFullYear(), cm = earliest.getMonth();
+    var selY = a.getFullYear(), selM = a.getMonth(), list = [];
+    while ((cy < selY || (cy === selY && cm <= selM)) && list.length < 25) { list.push({ y: cy, m: cm }); cm++; if (cm > 11) { cm = 0; cy++; } }
+    if (list.length > 12) list = list.slice(list.length - 12);
+    for (i = 0; i < list.length; i++) {
+      var s1 = new Date(list[i].y, list[i].m, 1), e1 = new Date(list[i].y, list[i].m + 1, 0); e1.setHours(23, 59, 59, 999);
+      push(s1, e1, _LOGI_MONTHS[list[i].m]);
+    }
+  }
+  return { labels: labels, shipments: sh, lots: lt, boxes: bo, pallets: pa, units: un, selectedIndex: labels.length - 1 };
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────────
+function renderLogistics() {
+  _logiFetchActive();
+  var content = document.getElementById('content');
+  content.style.display = 'block';
+  if (_logiActiveData() === null) {
+    if (_logiActiveError()) {
+      content.innerHTML = '<div style="padding:3rem;text-align:center;color:#888780;font-size:13px;font-family:system-ui;">Couldn’t load ' + logiDir + ' data.'
+        + '<div style="margin-top:14px;"><button onclick="retryLogistics()" style="'+navBtnStyle(true)+'padding:6px 16px;">Retry</button></div></div>';
+    } else {
+      content.innerHTML = '<div style="padding:3rem;text-align:center;color:#5f5e5a;font-size:13px;font-family:system-ui;">'
+        + '<div style="display:inline-block;width:14px;height:14px;border:1.5px solid #444441;border-top-color:#85B7EB;border-radius:50%;animation:orders-spin 1s linear infinite;vertical-align:middle;margin-right:8px;"></div>'
+        + 'Loading ' + logiDir + ' data…</div><style>@keyframes orders-spin{to{transform:rotate(360deg);}}</style>';
+    }
+    return;
+  }
+  var today = new Date();
+  var anchor = _logiAnchorDate();
+  var ships = groupLotsToShipments(_logiActiveData());
+  _logiShipmentsCache = ships;
+  var bounds = periodBounds(logiGran, anchor, today);
+  var prior = priorPeriodBounds(logiGran, anchor, today);
+  var cur = computeThroughput(ships, bounds);
+  var prev = computeThroughput(ships, prior);
+  var trend = computeTrendSeries(ships, logiGran, anchor, today);
+  content.innerHTML = _logiNavHTML(bounds)
+    + _logiTilesHTML(cur, prev, prior)
+    + _logiTrendHTML(trend)
+    + _logiLogHeaderHTML()
+    + '<div id="logi-log-host">' + _logiLogHTML(ships, bounds) + '</div>';
+  _drawLogiTrendChart(trend);
+}
+
+// Delta HTML for a tile subtext. priorHasData=false -> suppress ("no prior data").
+function _logiDelta(curVal, prevVal, priorHasData, label) {
+  if (!priorHasData || prevVal === 0) return '<span style="color:#5f5e5a;">no prior data</span>';
+  var p = (curVal - prevVal) / prevVal * 100;
+  if (Math.abs(p) < 0.5) return '<span style="color:#888780;">—</span> <span style="color:#5f5e5a;">' + esc(label) + '</span>';
+  var up = p > 0, col = up ? '#9FE1CB' : '#F09595', arrow = up ? '▲' : '▼';
+  return '<span style="color:' + col + ';">' + arrow + ' ' + (up ? '+' : '') + p.toFixed(1) + '%</span> <span style="color:#5f5e5a;">' + esc(label) + '</span>';
+}
+function _logiTilesHTML(cur, prev, prior) {
+  var L = _logiLabels();
+  var priorHas = prev.shipments > 0;
+  var GRID = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;';
+  // Units are outbound-only (inbound has no units column). When present, Units is a
+  // headline volume with a per-shipment note, plus a Units/business-day rate.
+  var unitsSub = cur.stickUnits > 0
+    ? '<span style="color:#C9A227;">' + _logiInt(cur.stickUnits) + '</span> stick-pack units, separate'
+    : '<span style="color:#888780;">' + _logiInt(cur.unitsPerShipment) + ' units per shipment</span>';
+  var unitsTile = L.showUnits ? _ordersCard('Units', _logiInt(cur.units), unitsSub, '#85B7EB') : '';
+  var row1 = '<div style="' + GRID + 'margin-bottom:10px;">'
+    + _ordersCard(L.unit, _logiInt(cur.shipments), _logiDelta(cur.shipments, prev.shipments, priorHas, prior.label))
+    + unitsTile
+    + _ordersCard(L.line, _logiInt(cur.lots), '<span style="color:#888780;">' + cur.lotsPerShipment.toFixed(2) + ' ' + L.per + '</span>')
+    + _ordersCard('Boxes', _logiInt(cur.boxes), _logiDelta(cur.boxes, prev.boxes, priorHas, prior.label))
+    + _ordersCard('Pallets', _logiInt(cur.pallets), _logiDelta(cur.pallets, prev.pallets, priorHas, prior.label))
+    + '</div>';
+  var fourth = L.pickup
+    ? _ordersCard('Customer pickup', Math.round(cur.pickupPct) + '%', '<span style="color:#5f5e5a;">' + cur.pickupShipments + ' of ' + cur.shipments + ' shipments</span>')
+    : _ordersCard('Vendors', _logiInt(cur.entities), '<span style="color:#5f5e5a;">supplying this period</span>');
+  var unitsRate = L.showUnits
+    ? _ordersCard('Units / business day', _logiInt(cur.unitsPerDay), '<span style="color:#5f5e5a;">prior ' + _logiInt(prev.unitsPerDay) + '/day</span>')
+    : '';
+  var row2 = '<div style="' + GRID + 'margin-bottom:18px;">'
+    + _ordersCard(L.unit + ' / business day', cur.shipmentsPerDay.toFixed(1), '<span style="color:#5f5e5a;">prior ' + prev.shipmentsPerDay.toFixed(1) + '/day</span>')
+    + unitsRate
+    + _ordersCard('Boxes / business day', _logiInt(cur.boxesPerDay), '<span style="color:#5f5e5a;">prior ' + _logiInt(prev.boxesPerDay) + '/day</span>')
+    + _ordersCard('Pallets / business day', cur.palletsPerDay.toFixed(1), '<span style="color:#5f5e5a;">prior ' + prev.palletsPerDay.toFixed(1) + '/day</span>')
+    + fourth
+    + '</div>';
+  return row1 + row2;
+}
+
+// ── Period navigator + picker (mirrors Production's date/week navigators) ────
+function _logiEarliest() {
+  var recs = _logiActiveData() || [], min = null, i;
+  for (i = 0; i < recs.length; i++) { var d = recs[i].date; if (d && (!min || d < min)) min = d; }
+  return min || new Date();
+}
+// Set of YYYY-MM-DD days that have at least one row (for weekend-skip).
+function _logiDataDaySet() {
+  var recs = _logiActiveData() || [], out = {}, i;
+  for (i = 0; i < recs.length; i++) { if (recs[i].date) out[_logiYMD(recs[i].date)] = true; }
+  return out;
+}
+function _logiNavHTML(bounds) {
+  var sub = bounds.businessDays + ' business day' + (bounds.businessDays === 1 ? '' : 's');
+  if (bounds.isCurrent) sub += (logiGran === 'daily' ? ' · today' : ' · ' + (logiGran === 'weekly' ? 'week' : 'month') + ' to date');
+  function btn(dir, disabled, sym) {
+    return '<button onclick="' + (disabled ? '' : 'navLogi(' + dir + ')') + '" ' + (disabled ? 'disabled' : '') + ' style="width:28px;height:28px;flex-shrink:0;border-radius:8px;border:0.5px solid #444441;background:transparent;cursor:' + (disabled ? 'default' : 'pointer') + ';color:' + (disabled ? '#444441' : '#e8e6e0') + ';font-size:16px;display:flex;align-items:center;justify-content:center;font-family:system-ui">' + sym + '</button>';
+  }
+  return '<div style="display:flex;align-items:center;gap:6px;position:relative;margin-bottom:16px;" id="logi-nav-anchor">'
+    + btn(-1, false, '&#8249;')
+    + '<div onclick="openLogiPicker()" style="text-align:center;min-width:250px;cursor:pointer;padding:5px 14px;border-radius:8px;border:0.5px solid #444441;background:transparent;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'transparent\'">'
+    +   '<div style="font-size:13px;font-weight:500;color:#e8e6e0;white-space:nowrap;">' + esc(bounds.label) + ' &#x25BE;</div>'
+    +   '<div style="font-size:10px;color:#5f5e5a;margin-top:2px;">' + esc(sub) + '</div>'
+    + '</div>'
+    + btn(1, bounds.isCurrent, '&#8250;')
+    + (bounds.isCurrent ? '' : '<button onclick="goLogiLive()" style="margin-left:6px;padding:6px 12px;border-radius:8px;border:0.5px solid #1D5A99;background:#0C2240;color:#85B7EB;font-size:11px;font-weight:500;cursor:pointer;font-family:system-ui;">Jump to current</button>')
+    + '</div>';
+}
+function closeLogiPicker() { var p = document.getElementById('logi-picker'); if (p) p.remove(); }
+function openLogiPicker() {
+  if (document.getElementById('logi-picker')) { closeLogiPicker(); return; }
+  var today = new Date(), t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  var cur = periodBounds(logiGran, _logiAnchorDate(), today);
+  var earliest = _logiEarliest(), eDay = new Date(earliest.getFullYear(), earliest.getMonth(), earliest.getDate());
+  var daySet = _logiDataDaySet();
+  var inner = '', DOW = '<div style="display:grid;grid-template-columns:repeat(7,30px);gap:2px;"><div style="font-size:10px;color:#5f5e5a;text-align:center">Su</div><div style="font-size:10px;color:#5f5e5a;text-align:center">Mo</div><div style="font-size:10px;color:#5f5e5a;text-align:center">Tu</div><div style="font-size:10px;color:#5f5e5a;text-align:center">We</div><div style="font-size:10px;color:#5f5e5a;text-align:center">Th</div><div style="font-size:10px;color:#5f5e5a;text-align:center">Fr</div><div style="font-size:10px;color:#5f5e5a;text-align:center">Sa</div>';
+  if (logiGran === 'monthly') {
+    var y, m, yrs = [];
+    for (y = t0.getFullYear(); y >= earliest.getFullYear(); y--) yrs.push(y);
+    inner = yrs.map(function(yr){
+      var cells = '';
+      for (m = 0; m < 12; m++) {
+        var future = (yr > t0.getFullYear()) || (yr === t0.getFullYear() && m > t0.getMonth());
+        var before = (yr < earliest.getFullYear()) || (yr === earliest.getFullYear() && m < earliest.getMonth());
+        var active = !future && !before;
+        var sel = (cur.start.getFullYear() === yr && cur.start.getMonth() === m);
+        var isNow = (yr === t0.getFullYear() && m === t0.getMonth());
+        var bg = sel ? '#1D9E75' : isNow ? '#0C447C' : 'transparent';
+        var color = sel ? '#fff' : isNow ? '#85B7EB' : active ? '#e8e6e0' : '#444441';
+        cells += '<div onclick="' + (active ? 'pickLogiMonth(' + yr + ',' + m + ')' : '') + '" style="padding:7px 0;text-align:center;border-radius:6px;font-size:12px;font-weight:' + (sel || isNow ? '500' : '400') + ';color:' + color + ';background:' + bg + ';cursor:' + (active ? 'pointer' : 'default') + ';">' + _LOGI_MONTHS[m] + '</div>';
+      }
+      return '<div style="margin-bottom:1rem"><div style="font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">' + yr + '</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">' + cells + '</div></div>';
+    }).join('');
+  } else {
+    var months = [], mm = new Date(earliest.getFullYear(), earliest.getMonth(), 1);
+    while (mm <= t0) { months.push(new Date(mm)); mm = new Date(mm.getFullYear(), mm.getMonth() + 1, 1); }
+    var weekEnd = new Date(cur.start.getFullYear(), cur.start.getMonth(), cur.start.getDate() + 6);
+    inner = months.reverse().map(function(mo){
+      var first = new Date(mo.getFullYear(), mo.getMonth(), 1), dim = new Date(mo.getFullYear(), mo.getMonth() + 1, 0).getDate(), sdow = first.getDay();
+      var cells = '', dnum;
+      for (dnum = 0; dnum < sdow; dnum++) cells += '<div></div>';
+      for (dnum = 1; dnum <= dim; dnum++) {
+        var dd = new Date(mo.getFullYear(), mo.getMonth(), dnum);
+        var inRange = dd <= t0 && dd >= eDay;
+        // Weekly picker: any day picks its week. Daily picker: skip dataless
+        // weekends/holidays (land only on business days or days that have data).
+        var active = inRange && (logiGran === 'weekly' || isBusinessDay(dd) || daySet[_logiYMD(dd)]);
+        var inSel = (logiGran === 'weekly') ? (dd >= cur.start && dd <= weekEnd) : (dd.getTime() === cur.start.getTime());
+        var isNow = dd.getTime() === t0.getTime();
+        var bg = inSel ? '#1D9E75' : isNow ? '#0C447C' : 'transparent';
+        var color = inSel ? '#fff' : isNow ? '#85B7EB' : active ? '#e8e6e0' : '#444441';
+        cells += '<div onclick="' + (active ? 'pickLogiDay(\'' + _logiYMD(dd) + '\')' : '') + '" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:12px;color:' + color + ';background:' + bg + ';cursor:' + (active ? 'pointer' : 'default') + ';">' + dnum + '</div>';
+      }
+      return '<div style="margin-bottom:1rem"><div style="font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">' + mo.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) + '</div>' + DOW + cells + '</div></div>';
+    }).join('');
+  }
+  var title = logiGran === 'daily' ? 'Select day' : logiGran === 'weekly' ? 'Select week' : 'Select month';
+  var p = document.createElement('div');
+  p.id = 'logi-picker';
+  p.style.cssText = 'position:absolute;z-index:1000;background:#1e2124;border:0.5px solid #444441;border-radius:12px;padding:1rem;max-height:420px;overflow-y:auto;min-width:' + (logiGran === 'monthly' ? '240px' : '250px') + ';left:34px;top:52px;';
+  p.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem"><span style="font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em">' + title + '</span><button onclick="closeLogiPicker()" style="background:transparent;border:none;color:#888780;cursor:pointer;font-size:16px;line-height:1;padding:0">&#x2715;</button></div>' + inner;
+  p.addEventListener('click', function(e){ e.stopPropagation(); });
+  var anchor = document.getElementById('logi-nav-anchor');
+  if (anchor) anchor.appendChild(p);
+  setTimeout(function(){ document.addEventListener('click', closeLogiPicker, { once: true }); }, 0);
+}
+function pickLogiDay(ymd) { var p = ymd.split('-'); logiAnchor = new Date(+p[0], +p[1] - 1, +p[2]); closeLogiPicker(); render(); }
+function pickLogiMonth(yr, m) { logiAnchor = new Date(yr, m, 1); closeLogiPicker(); render(); }
+
+// Only the metric toggle remains — granularity follows the top Daily/Weekly/
+// Monthly selector so the whole view speaks one time unit.
+function _logiTrendTogglesHTML() {
+  var L = _logiLabels();
+  function grp(items) { var h = '<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'; for (var i = 0; i < items.length; i++) h += items[i]; return h + '</div>'; }
+  var items = ['<button onclick="setLogiTrendMetric(\'shipments\')" style="' + navBtnStyle(logiTrendMetric === 'shipments') + '">' + esc(L.unit) + '</button>'];
+  if (L.showUnits) items.push('<button onclick="setLogiTrendMetric(\'units\')" style="' + navBtnStyle(logiTrendMetric === 'units') + '">Units</button>');
+  items.push('<button onclick="setLogiTrendMetric(\'lots\')" style="' + navBtnStyle(logiTrendMetric === 'lots') + '">' + esc(L.lineShort) + '</button>');
+  items.push('<button onclick="setLogiTrendMetric(\'boxes\')" style="' + navBtnStyle(logiTrendMetric === 'boxes') + '">Boxes</button>');
+  items.push('<button onclick="setLogiTrendMetric(\'pallets\')" style="' + navBtnStyle(logiTrendMetric === 'pallets') + '">Pallets</button>');
+  return grp(items);
+}
+function _logiGranNoun() { return logiGran === 'daily' ? 'day' : logiGran === 'weekly' ? 'week' : 'month'; }
+function _logiChartAria(trend) { return 'Throughput by ' + _logiGranNoun() + ', metric ' + logiTrendMetric + '. ' + trend.labels.length + ' buckets ending at the selected period.'; }
+function _logiTrendHTML(trend) {
+  return '<div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:10px;padding:16px 18px;margin-bottom:18px;">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">'
+    +   '<div style="font-size:12px;font-weight:600;color:#e8e6e0;">Throughput trend <span style="font-weight:400;color:#5f5e5a;">· by ' + _logiGranNoun() + '</span></div>'
+    +   '<span id="logi-trend-toggle-wrap">' + _logiTrendTogglesHTML() + '</span>'
+    + '</div>'
+    + '<div style="height:260px;position:relative;"><canvas id="logiTrendChart" role="img" aria-label="' + esc(_logiChartAria(trend)) + '"></canvas></div>'
+    + '<div style="font-size:11px;color:#5f5e5a;margin-top:10px;font-family:system-ui;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+    +   '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:16px;border-top:2px dashed #EF9F27;"></span>Average <span id="logi-trend-avg" style="color:#888780;"></span></span>'
+    +   '<span style="color:#3a3a38;">·</span>'
+    +   '<span>Highlighted bar is the selected ' + _logiGranNoun() + ' shown above.</span>'
+    + '</div>'
+    + '</div>';
+}
+function _logiAxisTick(metric) {
+  if (metric === 'boxes' || metric === 'units') return function(v){ if (v >= 1000000) return (v / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'; if (v >= 1000) return (v / 1000).toFixed(0) + 'k'; return v; };
+  return function(v){ return v; };
+}
+// Average of the non-zero buckets (empty buckets shouldn't drag the mean down),
+// rounded — matches the Weekly Output chart's 8-week-average convention.
+function _logiTrendAvg(data) {
+  var s = 0, c = 0, i;
+  for (i = 0; i < data.length; i++) { if (data[i] > 0) { s += data[i]; c++; } }
+  return c ? Math.round(s / c) : 0;
+}
+function _drawLogiTrendChart(trend) {
+  var cv = document.getElementById('logiTrendChart');
+  if (!cv || typeof Chart === 'undefined') return;
+  var data = trend[logiTrendMetric], colors = [], i;
+  for (i = 0; i < data.length; i++) colors.push(i === trend.selectedIndex ? '#85B7EB' : '#3987e5');
+  var avg = _logiTrendAvg(data), avgData = [];
+  for (i = 0; i < data.length; i++) avgData.push(avg);
+  charts.logiTrend = new Chart(cv, {
+    type: 'bar',
+    data: { labels: trend.labels, datasets: [
+      { type: 'bar', data: data, backgroundColor: colors, borderRadius: 4, maxBarThickness: 24, order: 2 },
+      { type: 'line', label: 'avg', data: avgData, borderColor: '#EF9F27', borderWidth: 1.5, borderDash: [3,3], pointRadius: 0, pointHoverRadius: 0, fill: false, tension: 0, order: 1 }
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(ctx){ if (ctx.dataset.label === 'avg') return 'avg: ' + Math.round(ctx.raw).toLocaleString(); return ctx.raw.toLocaleString(); } } } },
+      scales: {
+        x: { ticks: { color: '#888780', font: { size: 10 }, autoSkip: false, maxRotation: 45 }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { color: '#888780', callback: _logiAxisTick(logiTrendMetric) }, grid: { color: '#2c2c2a' } }
+      }
+    }
+  });
+  var avgEl = document.getElementById('logi-trend-avg'); if (avgEl) avgEl.textContent = avg.toLocaleString();
+}
+function _updateLogiTrend() {
+  var trend = computeTrendSeries(_logiShipmentsCache || groupLotsToShipments(_logiActiveData() || []), logiGran, _logiAnchorDate(), new Date());
+  var wrap = document.getElementById('logi-trend-toggle-wrap');
+  if (wrap) wrap.innerHTML = _logiTrendTogglesHTML();
+  var ch = charts.logiTrend;
+  if (!ch) return;
+  var data = trend[logiTrendMetric], colors = [], i;
+  for (i = 0; i < data.length; i++) colors.push(i === trend.selectedIndex ? '#85B7EB' : '#3987e5');
+  var avg = _logiTrendAvg(data), avgData = [];
+  for (i = 0; i < data.length; i++) avgData.push(avg);
+  ch.data.labels = trend.labels;
+  ch.data.datasets[0].data = data;
+  ch.data.datasets[0].backgroundColor = colors;
+  ch.data.datasets[1].data = avgData;
+  ch.options.scales.y.ticks.callback = _logiAxisTick(logiTrendMetric);
+  var cv = document.getElementById('logiTrendChart');
+  if (cv) cv.setAttribute('aria-label', _logiChartAria(trend));
+  var avgEl = document.getElementById('logi-trend-avg'); if (avgEl) avgEl.textContent = avg.toLocaleString();
+  ch.update();
+}
+
+var LOGI_LOG_CAP = 50;
+function _logiPickupIcon() { return '<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#888780" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M2 9v4h12V9"/><path d="M8 2v7"/><path d="M5 6l3 3 3-3"/></svg>'; }
+function _logiCarrierBit(s) {
+  if (s.carrierClass === 'pickup') return _logiPickupIcon() + _logiLabels().pickupWord;
+  if (!s.carrier) return '<span style="color:#5f5e5a;">no carrier recorded</span>';
+  return esc(s.carrier);
+}
+// Shipment-status badge (inbound: Received / In Transit / Pending Pickup / Canceled).
+function _logiStatusBadge(status) {
+  var s = (status || '').trim(); if (!s) return '';
+  var u = s.toLowerCase(), bg, color;
+  if (u.indexOf('transit') !== -1)      { bg = '#0C2240'; color = '#85B7EB'; }
+  else if (u.indexOf('pending') !== -1 || u.indexOf('pickup') !== -1) { bg = '#633806'; color = '#FAC775'; }
+  else if (u.indexOf('receiv') !== -1)  { bg = '#085041'; color = '#9FE1CB'; }
+  else if (u.indexOf('cancel') !== -1)  { bg = '#3a2323'; color = '#F09595'; }
+  else                                  { bg = '#2c2c2a'; color = '#888780'; }
+  return '<span style="display:inline-block;padding:1px 7px;border-radius:5px;font-size:10px;font-weight:500;background:' + bg + ';color:' + color + ';">' + esc(s) + '</span>';
+}
+// Copy a value (tracking/BOL/PO) to the clipboard with brief button feedback.
+function _logiCopy(text, btn) {
+  try { if (navigator.clipboard) navigator.clipboard.writeText(text); } catch(e) {}
+  if (btn) { var o = btn.innerHTML; btn.innerHTML = '<span style="color:#1D9E75;font-size:11px;">&#10003;</span>'; setTimeout(function(){ try { btn.innerHTML = o; } catch(e){} }, 1000); }
+}
+// A reference (tracking/BOL) rendered as selectable text + a click-to-copy button.
+// stopPropagation so selecting/copying doesn't toggle the row's expand.
+function _logiRefCell(text) {
+  return '<span onclick="event.stopPropagation();" style="user-select:text;-webkit-user-select:text;cursor:text;color:#a8c7e8;font-variant-numeric:tabular-nums;">' + esc(text) + '</span>'
+    + '<button onclick="event.stopPropagation();_logiCopy(' + jsStr(text) + ',this)" title="Copy tracking / BOL" style="margin-left:4px;background:transparent;border:none;cursor:pointer;color:#5f5e5a;padding:0;vertical-align:-1px;" onmouseover="this.style.color=\'#85B7EB\'" onmouseout="this.style.color=\'#5f5e5a\'"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M3 11V3a1 1 0 0 1 1-1h7"/></svg></button>';
+}
+// Inbound status filter (lives in the log header): All / Open / Received.
+function _logiStatusFilterHTML() {
+  function btn(v, label, title) { return '<button onclick="setLogiStatusFilter(\'' + v + '\')" title="' + esc(title) + '" style="' + navBtnStyle(logiStatusFilter === v) + '">' + label + '</button>'; }
+  return '<div style="display:flex;align-items:center;gap:8px;">'
+    + '<span style="font-size:10px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;font-family:system-ui;">Status</span>'
+    + '<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
+    +   btn('all', 'All', 'All statuses')
+    +   btn('open', 'Open', 'In transit or pending pickup')
+    +   btn('received', 'Received', 'Already received')
+    + '</div></div>';
+}
+// Log header: inbound status filter (left) + search box (right, top of the table).
+function _logiSearchBoxHTML() {
+  return '<div class="cust-search-wrap">'
+    + '<span class="cust-search-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.25" stroke="#888780" stroke-width="1.3"/><line x1="9.2" y1="9.2" x2="12.2" y2="12.2" stroke="#888780" stroke-width="1.3" stroke-linecap="round"/></svg></span>'
+    + '<input id="logiSearchInput" type="text" class="cust-search-input" placeholder="' + esc(_logiLabels().search) + '" aria-label="Search" autocomplete="off" value="' + esc(logiSearch) + '" oninput="onLogiSearchInput(this.value)" />'
+    + '<button id="logiSearchClear" type="button" class="cust-search-clear" aria-label="Clear search" style="display:' + (logiSearch ? 'inline-flex' : 'none') + ';" onclick="clearLogiSearch()">&times;</button>'
+    + '</div>';
+}
+function _logiLogHeaderHTML() {
+  var left = (logiDir === 'inbound') ? '<div id="logi-status-filter-wrap">' + _logiStatusFilterHTML() + '</div>' : '<span></span>';
+  return '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">'
+    + left + _logiSearchBoxHTML() + '</div>';
+}
+function setLogiStatusFilter(v) {
+  logiStatusFilter = v;
+  var wrap = document.getElementById('logi-status-filter-wrap');
+  if (wrap) wrap.innerHTML = _logiStatusFilterHTML();
+  var host = document.getElementById('logi-log-host');
+  if (host) host.innerHTML = _logiLogHTML(_logiShipmentsCache || groupLotsToShipments(_logiActiveData() || []), periodBounds(logiGran, _logiAnchorDate(), new Date()));
+  else render();
+}
+function _logiStatusMatch(status, filter) {
+  var u = (status || '').toLowerCase();
+  if (filter === 'received') return u.indexOf('receiv') !== -1;
+  if (filter === 'open') return u.indexOf('transit') !== -1 || u.indexOf('pending') !== -1 || u.indexOf('pickup') !== -1;
+  return true;
+}
+function _logiLogHTML(shipments, bounds) {
+  var L = _logiLabels();
+  var q = (logiSearch || '').toLowerCase().trim();
+  var statusF = (L.showStatus && logiStatusFilter !== 'all') ? logiStatusFilter : null;
+  var inRange = [], i;
+  for (i = 0; i < shipments.length; i++) {
+    var s = shipments[i];
+    if (!s.date) continue;
+    // A search spans ALL dates (locate a PO/tracking regardless of the selected
+    // period); with no search, respect the period bounds.
+    if (!q && (s.date < bounds.start || s.date > bounds.end)) continue;
+    if (statusF && !_logiStatusMatch(s.status, statusF)) continue;
+    if (q) {
+      var hay = (s.customer + ' ' + s.carrier + ' ' + s.reference + ' ' + s.eta).toLowerCase();
+      for (var j = 0; j < s.lots.length; j++) hay += ' ' + (s.lots[j].product + ' ' + s.lots[j].lotNo).toLowerCase();
+      if (hay.indexOf(q) === -1) continue;
+    }
+    inRange.push(s);
+  }
+  if (!inRange.length) {
+    var fdesc = statusF === 'open' ? ' open' : statusF === 'received' ? ' received' : '';
+    var msg = q ? 'No' + fdesc + ' ' + L.unitMany + ' match “' + esc(logiSearch) + '”.' : 'No' + fdesc + ' ' + L.unitMany + ' in this period.';
+    return '<div style="padding:2.5rem;text-align:center;color:#5f5e5a;font-size:13px;font-family:system-ui;">' + msg + '</div>';
+  }
+  inRange.sort(function(a, b) {
+    var t = b.date.getTime() - a.date.getTime();
+    if (t !== 0) return t;
+    return (a.customer || '') < (b.customer || '') ? -1 : ((a.customer || '') > (b.customer || '') ? 1 : 0);
+  });
+  // Day groups with full throughput summary on the day header.
+  var days = [], dmap = {};
+  for (i = 0; i < inRange.length; i++) {
+    var sp = inRange[i], dk = _logiYMD(sp.date);
+    if (!dmap[dk]) { dmap[dk] = { date: sp.date, list: [], ships: 0, lots: 0, boxes: 0, pallets: 0, units: 0, stick: 0, unrec: 0 }; days.push(dmap[dk]); }
+    var g = dmap[dk];
+    g.list.push(sp); g.ships++; g.lots += sp.lots.length; g.pallets += sp.pallets; g.units += (sp.units || 0); g.stick += (sp.stickUnits || 0);
+    if (sp.boxesRecorded) g.boxes += sp.boxes; else g.unrec++;
+  }
+  // Outbound adds a Units column; column headers keep the numeric triple unambiguous.
+  var showU = L.showUnits;
+  var GC = showU ? 'grid-template-columns:18px 1fr 66px 66px 66px;' : 'grid-template-columns:18px 1fr 74px 74px;';
+  var GCL = showU ? 'grid-template-columns:28px 1fr 66px 66px 66px;' : 'grid-template-columns:28px 1fr 74px 74px;';
+  var thN = 'font-size:9px;color:#5f5e5a;text-align:right;text-transform:uppercase;letter-spacing:.04em;';
+  var colHeader = '<div style="display:grid;' + GC + 'gap:10px;padding:6px 16px 4px;">'
+    + '<span></span><span style="font-size:9px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;">' + esc(L.entity) + '</span>'
+    + (showU ? '<span style="' + thN + '">Units</span>' : '')
+    + '<span style="' + thN + '">Boxes</span><span style="' + thN + '">Pallets</span></div>';
+  var html = '', shown = 0, truncated = false, d, k;
+  for (d = 0; d < days.length; d++) {
+    if (shown >= LOGI_LOG_CAP) { truncated = true; break; }
+    var day = days[d];
+    var hdrDate = day.date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    var unrecNote = (L.showBoxesNote && day.unrec) ? ' <span style="color:#5f5e5a;">(' + day.unrec + ' ' + (day.unrec === 1 ? L.unitOne : L.unitMany) + ', boxes not recorded)</span>' : '';
+    var unitsSummary = showU ? (_logiInt(day.units) + ' units · ' + (day.stick > 0 ? '<span style="color:#C9A227;">' + _logiInt(day.stick) + ' stick</span> · ' : '')) : '';
+    html += '<div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:10px;overflow:hidden;margin-bottom:12px;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;padding:11px 16px;background:#141618;border-bottom:0.5px solid #2c2c2a;">'
+      +   '<span style="font-size:15px;font-weight:500;color:#e8e6e0;">' + esc(hdrDate) + '</span>'
+      +   '<span style="font-size:11px;color:#888780;font-variant-numeric:tabular-nums;">' + day.ships + ' ' + (day.ships === 1 ? L.unitOne : L.unitMany) + ' · ' + unitsSummary + _logiInt(day.lots) + ' ' + L.lineShort.toLowerCase() + ' · ' + _logiInt(day.boxes) + ' boxes · ' + _logiInt(day.pallets) + ' pallets' + unrecNote + '</span>'
+      + '</div>'
+      + colHeader;
+    for (k = 0; k < day.list.length; k++) {
+      if (shown >= LOGI_LOG_CAP) { truncated = true; break; }
+      var s2 = day.list[k]; shown++;
+      var open = !!logiExpanded[s2.key];
+      var bx = boxesForShipment(s2);
+      var boxCell = bx.recorded ? _logiInt(bx.boxes) : '<span style="color:#5f5e5a;">—</span>';
+      // Subline: PO#/Lot# (always visible, selectable) · carrier · tracking (copyable) · ETA
+      var sep = ' <span style="color:#3a3a38;">·</span> ', parts = [];
+      var ids = [], li;
+      for (li = 0; li < s2.lots.length; li++) if (s2.lots[li].lotNo) ids.push(s2.lots[li].lotNo);
+      if (ids.length) {
+        var shownIds = ids.slice(0, 3).join(', ') + (ids.length > 3 ? ' +' + (ids.length - 3) : '');
+        parts.push('<span onclick="event.stopPropagation();" style="user-select:text;-webkit-user-select:text;cursor:text;color:#cfcdc7;">' + esc(L.lineIdPrefix) + ' ' + esc(shownIds) + '</span>');
+      }
+      if (showU && s2.stickUnits > 0) parts.push('<span style="color:#C9A227;">' + _logiInt(s2.stickUnits) + ' stick-pack units</span>');
+      if (L.showStatus && s2.status) parts.push(_logiStatusBadge(s2.status));
+      parts.push(_logiCarrierBit(s2));
+      if (s2.reference) parts.push(_logiRefCell(s2.reference));
+      if (s2.eta) parts.push('ETA ' + esc(s2.eta));
+      if (L.showBoxesNote && !bx.recorded) parts.push('<span style="color:#C9A227;">boxes not recorded</span>');
+      var meta = parts.join(sep);
+      html += '<div onclick="toggleLogiShipment(' + jsStr(s2.key) + ')" style="padding:8px 16px;border-bottom:0.5px solid #1a1d20;cursor:pointer;" onmouseover="this.style.background=\'#191c1f\'" onmouseout="this.style.background=\'transparent\'">'
+        + '<div style="display:grid;' + GC + 'gap:10px;align-items:center;">'
+        +   '<span style="color:#888780;display:inline-block;' + (open ? 'transform:rotate(90deg);' : '') + '">▸</span>'
+        +   '<span style="font-size:13.5px;color:#e8e6e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(s2.customer || '—') + '</span>'
+        +   (showU ? '<span style="font-size:12px;color:#e8e6e0;font-weight:500;text-align:right;font-variant-numeric:tabular-nums;">' + (s2.units ? _logiInt(s2.units) : '<span style="color:#5f5e5a;font-weight:400;">—</span>') + '</span>' : '')
+        +   '<span style="font-size:12px;color:#cfcdc7;text-align:right;font-variant-numeric:tabular-nums;">' + boxCell + '</span>'
+        +   '<span style="font-size:12px;color:#cfcdc7;text-align:right;font-variant-numeric:tabular-nums;">' + (s2.pallets ? _logiInt(s2.pallets) : '<span style="color:#5f5e5a;">—</span>') + '</span>'
+        + '</div>'
+        + '<div style="padding-left:28px;margin-top:3px;font-size:11.5px;color:#888780;">' + meta + '</div>'
+        + '</div>';
+      if (open) {
+        var lk;
+        for (lk = 0; lk < s2.lots.length; lk++) {
+          var lt = s2.lots[lk];
+          var dash = lt.product.indexOf('-');
+          var prodName = (dash !== -1) ? lt.product.slice(dash + 1).trim() : lt.product;
+          var stickTag = lt.stick ? ' <span style="font-size:9px;color:#C9A227;border:0.5px solid #6b5514;border-radius:4px;padding:0 4px;">STICK</span>' : '';
+          var lineLabel = (prodName ? '<span style="color:#cfcdc7;font-variant-numeric:tabular-nums;">' + esc(lt.lotNo) + '</span> · ' + esc(prodName) : '<span style="color:#cfcdc7;font-variant-numeric:tabular-nums;">' + esc(lt.lotNo) + '</span>') + stickTag;
+          html += '<div style="display:grid;' + GCL + 'gap:10px;align-items:center;padding:5px 16px;border-bottom:0.5px solid #141618;background:#191c1f;">'
+            + '<span></span>'
+            + '<span style="font-size:12px;color:#888780;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + lineLabel + '</span>'
+            + (showU ? '<span style="font-size:12px;color:' + (lt.stick ? '#C9A227' : '#cfcdc7') + ';text-align:right;font-variant-numeric:tabular-nums;">' + (lt.units ? _logiInt(lt.units) : '<span style="color:#5f5e5a;">—</span>') + '</span>' : '')
+            + '<span style="font-size:12px;color:#888780;text-align:right;font-variant-numeric:tabular-nums;">' + (lt.boxes ? _logiInt(lt.boxes) : '<span style="color:#5f5e5a;">—</span>') + '</span>'
+            + '<span style="font-size:12px;color:#888780;text-align:right;font-variant-numeric:tabular-nums;">' + (lt.pallets ? _logiInt(lt.pallets) : '<span style="color:#5f5e5a;">—</span>') + '</span>'
+            + '</div>';
+        }
+      }
+    }
+    html += '</div>';
+  }
+  if (truncated) {
+    var remaining = inRange.length - shown;
+    html += '<div style="padding:12px;text-align:center;color:#5f5e5a;font-size:11px;font-family:system-ui;">' + remaining + ' more ' + (remaining === 1 ? L.unitOne : L.unitMany) + ' — narrow the search to see them all.</div>';
+  }
+  // When searching, results span all dates (not just the selected period) so you
+  // can locate a shipment by PO/tracking from anywhere.
+  var note = q ? '<div style="font-size:11px;color:#5f5e5a;margin-bottom:10px;font-family:system-ui;">Searching all dates for &ldquo;' + esc(logiSearch) + '&rdquo; &middot; ' + inRange.length + ' ' + (inRange.length === 1 ? L.unitOne : L.unitMany) + '.</div>' : '';
+  return note + html;
 }
 
 function filterProcurement() {
@@ -3012,21 +4075,9 @@ function renderImpl() {
   try {
     // Enforce viewer restrictions
     if (userRole !== 'admin') {
-      if (mainSection === 'customers' || mainSection === 'procurement' || mainSection === 'orders' || mainSection === 'quality') { mainSection = 'production'; }
+      if (mainSection === 'customers' || mainSection === 'procurement' || mainSection === 'orders' || mainSection === 'logistics' || mainSection === 'quality') { mainSection = 'production'; }
       if (topView === 'detail') { topView = 'summary'; }
       if (subView === 'performance') { subView = 'today'; }
-    }
-    // Customer tab inserts the concentration bar between main nav and sub-nav.
-    // When it's visible, the sub-nav needs to stick below it instead of at the
-    // default top:68. Every other section hides the bar and restores top:68.
-    var _concOuter = document.getElementById('cust-concentration-outer');
-    var _subOuter  = document.getElementById('sub-bar-outer');
-    if (mainSection === 'customers') {
-      if (_concOuter) _concOuter.style.display = 'block';
-      if (_subOuter)  { _subOuter.style.display = ''; _subOuter.style.top = '120px'; }  // 68 (app-bar) + 52 (conc bar)
-    } else {
-      if (_concOuter) _concOuter.style.display = 'none';
-      if (_subOuter)  { _subOuter.style.top = ''; _subOuter.style.display = ''; }
     }
     if (mainSection === 'customers') {
       renderCustomers();
@@ -3038,6 +4089,10 @@ function renderImpl() {
     }
     if (mainSection === 'orders') {
       renderOrders();
+      return;
+    }
+    if (mainSection === 'logistics') {
+      renderLogistics();
       return;
     }
     if (mainSection === 'quality') {
@@ -6251,30 +7306,28 @@ function renderCustomerOverview(healthData) {
     +'</div>';
   }
 
-  // ── Concentration summary bar ────────────────────────────────────
-  // Rendered into the outer #cust-concentration-inner container (outside
-  // #content), which is sticky at top:68 — sits between the main nav and the
-  // sub-nav on the customer tab. See renderImpl for the visibility toggle.
-  var concentrationInner = document.getElementById('cust-concentration-inner');
-  if (concentrationInner) {
-    if (totalYtdAll > 0) {
-      concentrationInner.innerHTML = '<div class="concentration-strip" style="height:52px;display:flex;align-items:center;gap:20px;">'
+  // ── Concentration summary banner ─────────────────────────────────
+  // Rendered inline at the top of #content (scrolls with the page). Kept out
+  // of the sticky nav band so the Sales sub-nav stays fixed at top:68 no
+  // matter which half (Open Orders / Customers) is active.
+  var concentrationHTML = '';
+  if (totalYtdAll > 0) {
+    concentrationHTML = '<div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:10px;padding:0 16px;margin-bottom:16px;">'
+      +'<div class="concentration-strip" style="height:52px;display:flex;align-items:center;gap:20px;">'
         +'<span style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;">Customer concentration &middot; '+nowYr+' YTD</span>'
         +_concStat('top 5',  top5CurPct,  top5PriorPct)
         +'<span style="width:1px;height:24px;background:#2c2c2a;"></span>'
         +_concStat('top 10', top10CurPct, top10PriorPct)
         +'<span style="margin-left:auto;font-size:10px;color:#5f5e5a;">Higher % = more concentrated in fewer customers</span>'
-      +'</div>';
-    } else {
-      concentrationInner.innerHTML = '';
-    }
+      +'</div>'
+    +'</div>';
   }
 
-  // ── Column header row (sticky, top:108 + 52 = 160) ────────────────
+  // ── Column header row (sticky directly under the sub-bar: 68 + 40 = 108) ─
   // Shared 8-column grid template: rank | customer | bars | units | lots | avg | %prod | sparkline.
   var _gridCols = '28px 140px 1fr 80px 80px 80px 60px 40px';
   var _thStyle  = 'font-size:10px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;';
-  var columnHeaderHTML = '<div class="customer-row" style="position:sticky;top:160px;z-index:9;background:#141618;border-bottom:0.5px solid #2c2c2a;display:grid;grid-template-columns:'+_gridCols+';gap:12px;align-items:center;padding:14px 16px;margin-top:-16px;">'
+  var columnHeaderHTML = '<div class="customer-row" style="position:sticky;top:108px;z-index:9;background:#141618;border-bottom:0.5px solid #2c2c2a;display:grid;grid-template-columns:'+_gridCols+';gap:12px;align-items:center;padding:14px 16px;">'
     +'<div></div>'
     +'<div style="'+_thStyle+'">Customer</div>'
     +'<div style="'+_thStyle+'">'+prevYr+' &middot; '+nowYr+'</div>'
@@ -6613,11 +7666,11 @@ function renderCustomerOverview(healthData) {
 
   // No-match state when a search returns nothing.
   if (_searchTerm && visibleCustomers.length === 0) {
-    return columnHeaderHTML
+    return concentrationHTML + columnHeaderHTML
       + '<div class="cust-empty">No customers match &ldquo;' + esc(customerSearchQuery) + '&rdquo;</div>';
   }
 
-  return columnHeaderHTML + rows;
+  return concentrationHTML + columnHeaderHTML + rows;
 }
 
 function _triggerExpandedSynopses() {
@@ -10014,6 +11067,8 @@ function confirmExport() { closeExportPopover(); exportDetailExcel(); }
 // Restore Open Orders from sessionStorage before anything else — a page
 // refresh inside the same session should feel instant on the Orders tab.
 _loadOpenOrdersCache();
+_loadLogisticsCache();
+_loadInboundCache();
 _loadStockCaches();
 
 if (sessionStorage.getItem('dtf_auth') === '1') {
