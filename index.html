@@ -123,10 +123,12 @@
        scrollable tab bar below. Single-row, the tabs get squeezed to ~0 width
        between the brand name and the controls and vanish in portrait. */
     .app-bar > div { flex-wrap: wrap; padding: 6px 10px !important; row-gap: 6px; align-items: center; }
-    .brand-wrap { order: 1; padding: 0 !important; margin: 0 !important; }
-    .brand-wrap > div { display: none; }              /* hide company name/subtitle; keep the DTF mark */
-    .brand-wrap svg { width: 36px; height: 36px; }
-    .app-bar > div > div:last-child { order: 2; }      /* Refresh / Admin controls stay on the top row */
+    .brand-wrap { order: 1; padding: 0 !important; margin: 0 10px 0 0 !important; border-right: none; flex: 1 1 auto; min-width: 0; gap: 8px; }
+    .brand-wrap > div { min-width: 0; }                /* keep the company name + subtitle; fills the free top-row space */
+    .brand-name { font-size: 12.5px; line-height: 1.15; }
+    .brand-sub { font-size: 9px; margin-top: 1px; }
+    .brand-wrap svg { width: 34px; height: 34px; }
+    .app-bar > div > div:last-child { order: 2; flex-shrink: 0; }   /* Refresh / Admin stay right on the top row */
     .main-tabs { order: 3; flex: 1 0 100%; width: 100%; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; padding: 2px 0 0; gap: 6px; }
     .main-tabs::-webkit-scrollbar { display: none; }
     .main-tab { flex-shrink: 0; padding: 6px 10px; }
@@ -149,9 +151,16 @@
     /* Production — Daily gauge cards stack */
     .daily-gauges { flex-direction: column; gap: 8px; }
 
-    /* Production — Daily "Completed today" per-line columns stack to one column
-       (side-by-side, the lot cards squeeze and the deviation badge overlaps). */
+    /* Production — Daily "Completed today" and Weekly "Lots this week" per-line
+       columns stack to one column (side-by-side, the lot cards squeeze and the
+       deviation badge overlaps / units get cut off). */
     #dailyCompletedGrid > div { grid-template-columns: 1fr !important; }
+    #weekLotsGrid { grid-template-columns: 1fr !important; }
+
+    /* Production — Daily outlook date nav drops to its own full-width line as a
+       unit (‹ picker ›), instead of the arrow clinging to the header row. */
+    .daily-datenav { flex: 1 1 100%; }
+    .daily-nav-sep { display: none; }
 
     /* Production — Weekly per-line cards (Line #1/#2/#4) stack; each gets full
        width so its day-chips and jar/container mix stop getting cut off. */
@@ -4641,7 +4650,10 @@ function renderToday() {
       +'<div style="width:8px;height:8px;border-radius:50%;background:'+(isLive?'#1D9E75':'#888780')+';flex-shrink:0;"></div>'
       +'<h3 style="margin:0;font-size:11px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;line-height:1;">Daily outlook</h3>'
       +'<span id="daily-freshness" style="font-size:10px;font-family:system-ui;color:'+freshnessLabel().color+';white-space:nowrap;">'+esc(freshnessLabel().text)+'</span>'
-      +'<div style="width:0.5px;height:12px;background:#2c2c2a;flex-shrink:0;margin:0 2px;"></div>'
+      +'<div class="daily-nav-sep" style="width:0.5px;height:12px;background:#2c2c2a;flex-shrink:0;margin:0 2px;"></div>'
+      // Nav controls grouped so they wrap together onto their own line on mobile
+      // (otherwise the ‹ arrow sticks to the header line and the picker drops below).
+      +'<div class="daily-datenav" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
       +'<button onclick="navDay(-1)" '+(prevDisabled?'disabled':'')+' style="width:24px;height:26px;flex-shrink:0;border-radius:6px;border:0.5px solid #444441;background:transparent;cursor:'+(prevDisabled?'default':'pointer')+';color:'+(prevDisabled?'#444441':'#888780')+';font-size:14px;display:flex;align-items:center;justify-content:center;font-family:system-ui;">&#8249;</button>'
       +'<div onclick="openPicker()" id="date-nav-anchor" style="width:220px;flex-shrink:0;cursor:pointer;padding:4px 10px;border-radius:7px;border:0.5px solid #444441;background:transparent;display:flex;align-items:center;justify-content:center;gap:5px;height:26px;" onmouseover="this.style.background=\'#252829\'" onmouseout="this.style.background=\'transparent\'">'
         +'<span style="font-size:12px;font-weight:500;color:#e8e6e0;font-family:system-ui;white-space:nowrap;">'+viewFmt+'</span>'
@@ -4649,6 +4661,7 @@ function renderToday() {
       +'</div>'
       +'<button onclick="navDay(1)" '+(nextDisabled?'disabled':'')+' style="width:24px;height:26px;flex-shrink:0;border-radius:6px;border:0.5px solid #444441;background:transparent;cursor:'+(nextDisabled?'default':'pointer')+';color:'+(nextDisabled?'#444441':'#888780')+';font-size:14px;display:flex;align-items:center;justify-content:center;font-family:system-ui;">&#8250;</button>'
       +(!isLive?'<button onclick="navToToday()" style="height:26px;padding:0 10px;border-radius:6px;border:0.5px solid #1D9E75;background:transparent;cursor:pointer;color:#1D9E75;font-size:11px;font-weight:500;font-family:system-ui;flex-shrink:0;">Jump to today</button>':'')
+      +'</div>'
     +'</div>'
     +'<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.5rem">Currently running</div>'
     +(isLive?ALL_LINES.map(function(line){
