@@ -812,6 +812,8 @@ var ordersDrilldownStatus = null;   // null | <status name> — which row is exp
 var customerChartView = 'all';      // 'all' | 'powder' | 'capsule'
 var customerChartLimit = '10';      // '10' | '25' | 'all'
 var customerDrilldown  = null;      // null | <brand name> — which customer row is expanded
+var ooCustSearch = '';              // Open Orders → Customer Breakdown name filter. A non-empty
+                                    // query overrides the Top 10/25/All limit (see renderOrdersSummary).
 var agingDrilldown     = null;      // null | '4-8' | '8-12' | '12+' — which aging bucket is expanded
 // Logistics (shipping tracker) state
 var logisticsData = null;           // null = not yet fetched; array of OUTBOUND shipment records once loaded
@@ -3034,6 +3036,57 @@ function toggleCustomerDrilldown(brand) {
   closeMsPanel();
   customerDrilldown = (customerDrilldown === brand) ? null : brand;
   render();
+}
+
+// ── Customer Breakdown name filter ────────────────────────────────────────
+// Purely a DOM pass over the already-rendered rows (every customer is in the
+// markup, hidden or not), so typing never re-renders the page, never rebuilds a
+// chart, and never moves the caret. Same approach as filterProcurement /
+// filterMaterials. ooCustSearch is kept in module state so a real re-render — a
+// drilldown click, or the 5-minute auto-refresh — repaints already filtered.
+function _ooMatchNote(shown, total, q) {
+  if (!shown) return '';
+  return 'Showing ' + shown + ' of ' + total + ' customers matching “' + (q||'').replace(/^\s+|\s+$/g,'') + '”';
+}
+function filterOOCustomers() {
+  var inp = document.getElementById('ooCustSearchInput');
+  if (inp) ooCustSearch = inp.value;
+  var q = (ooCustSearch || '').replace(/^\s+|\s+$/g,'').toLowerCase();
+  var clr = document.getElementById('ooCustSearchClear');
+  if (clr) clr.style.display = q ? 'inline-flex' : 'none';
+  // A query reaches the whole list — that's the point of searching, so it
+  // deliberately overrides Top 10/25 instead of intersecting with it.
+  var limit = customerChartLimit === 'all' ? Infinity : parseInt(customerChartLimit, 10);
+  var rows = document.querySelectorAll('.oo-cust-row'), shown = 0, i;
+  for (i = 0; i < rows.length; i++) {
+    var el = rows[i];
+    var vis = q
+      ? (el.getAttribute('data-oo-cust') || '').indexOf(q) !== -1
+      : parseInt(el.getAttribute('data-oo-rank'), 10) < limit;
+    el.style.display = vis ? 'block' : 'none';
+    if (vis) shown++;
+  }
+  var limitNote = document.getElementById('oo-cust-note-limit');
+  var searchNote = document.getElementById('oo-cust-note-search');
+  if (limitNote)  limitNote.style.display = (!q && limitNote.innerHTML) ? 'block' : 'none';
+  if (searchNote) {
+    searchNote.textContent = q ? _ooMatchNote(shown, rows.length, ooCustSearch) : '';
+    searchNote.style.display = (q && shown) ? 'block' : 'none';
+  }
+  var emptyEl = document.getElementById('oo-cust-empty');
+  if (emptyEl) {
+    emptyEl.textContent = (q && !shown) ? ('No customer matches “' + ooCustSearch.replace(/^\s+|\s+$/g,'') + '”.') : '';
+    emptyEl.style.display = (q && !shown) ? 'block' : 'none';
+  }
+}
+function onOOCustSearchKey(e) {
+  if (e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27) clearOOCustSearch();
+}
+function clearOOCustSearch() {
+  ooCustSearch = '';
+  var inp = document.getElementById('ooCustSearchInput');
+  if (inp) { inp.value = ''; inp.focus(); }
+  filterOOCustomers();
 }
 
 function toggleAgingDrilldown(bucket) {
@@ -8290,7 +8343,9 @@ function exportProcurement() {
 
   // ── Sheet 1: Quarterly Summary ──
   var qtrLabels = displayQtrs.map(function(qk){ return quarterLabel(qk)+(qk===curQk?' (partial)':''); });
-  var s1Headers = [Label+' SKU','Trajectory'].concat(qtrLabels).concat(['FY '+PRIOR_YEAR,'YTD '+nowYr,'YTD Change','% of Usage']);
+  // 'Total since Q1 2025' mirrors the Total row now closing each card's quarterly
+  // table — it's the sum of the quarter columns to its left, partial quarter included.
+  var s1Headers = [Label+' SKU','Trajectory'].concat(qtrLabels).concat(['Total since Q1 2025','FY '+PRIOR_YEAR,'YTD '+nowYr,'YTD Change','% of Usage']);
   var s1Rows = [
     ['DTF Operations Center — Procurement Export'],
     [Label+' usage  ·  Q1 2025 → present  ·  Generated '+dateStr],
@@ -8300,6 +8355,7 @@ function exportProcurement() {
 
   summaryData.forEach(function(d) {
     var row = [d.sku, d.tag].concat(d.qVals).concat([
+      d.qVals.reduce(function(s,v){return s+v;}, 0),
       d.fy25,
       d.ytd,
       d.chg !== null ? d.chg : 'N/A',
@@ -8311,6 +8367,7 @@ function exportProcurement() {
   // Totals row
   var totQtrs = displayQtrs.map(function(qk){ return summaryData.reduce(function(s,d){ return s+(skuQtr[d.sku][qk]?skuQtr[d.sku][qk].units:0); },0); });
   s1Rows.push(['TOTAL',''].concat(totQtrs).concat([
+    totQtrs.reduce(function(s,v){return s+v;}, 0),
     summaryData.reduce(function(s,d){return s+d.fy25;},0),
     summaryData.reduce(function(s,d){return s+d.ytd;},0),
     '',
@@ -8320,7 +8377,7 @@ function exportProcurement() {
   var ws1 = XLSX.utils.aoa_to_sheet(s1Rows);
 
   // Column widths
-  var w1 = [{wch:30},{wch:13}].concat(displayQtrs.map(function(){return{wch:13};})).concat([{wch:14},{wch:12},{wch:12},{wch:12}]);
+  var w1 = [{wch:30},{wch:13}].concat(displayQtrs.map(function(){return{wch:13};})).concat([{wch:19},{wch:14},{wch:12},{wch:12},{wch:12}]);
   ws1['!cols'] = w1;
   ws1['!merges'] = [{s:{r:0,c:0},e:{r:0,c:s1Headers.length-1}},{s:{r:1,c:0},e:{r:1,c:s1Headers.length-1}}];
   XLSX.utils.book_append_sheet(wb, ws1, 'Quarterly Summary');
@@ -9768,6 +9825,214 @@ function renderMaterials() {
 
 // ── Open Orders ───────────────────────────────────────────────────────────
 
+// ── Per-customer Open Orders export ───────────────────────────────────────
+// Sales sends this workbook to the customer, so it is deliberately built from
+// that brand's FULL open book — every open powder + capsule row, production and
+// sample/bulk alike — and NOT from whatever the Customer Breakdown's All/Powder/
+// Capsule and Top 10/25 toggles happen to be showing. A report that silently
+// dropped half a customer's orders because a toggle was set is worse than one
+// that shows more than the screen; the sheet header states the basis either way.
+// "Open" means on the books: Complete/RTS is excluded, same rule as the page.
+function _ooBrandRows(brand) {
+  var want = (brand == null ? '' : String(brand)).trim().toLowerCase(), out = [];
+  function take(rows, type) {
+    (rows || []).forEach(function(r){
+      if ((r['Brand Name']||'').trim().toLowerCase() !== want) return;
+      if ((r['Planning Status']||'').trim().toLowerCase() === 'complete/rts') return;
+      out.push({ row:r, type:type });
+    });
+  }
+  take(openOrdersPowder,  'Powder');
+  take(openOrdersCapsule, 'Capsule');
+  // Oldest first, ties by size — the same order the on-screen drilldown uses.
+  out.sort(function(a,b){
+    var dw = num(b.row['# of Weeks on the Books']) - num(a.row['# of Weeks on the Books']);
+    if (dw) return dw;
+    return num(b.row['Order Amount']) - num(a.row['Order Amount']);
+  });
+  return out;
+}
+function _ooIsLabelBlocked(r) { return (r['Planning Status']||'').trim() === 'Not Enough Labels'; }
+// The sheet's Labels column is a count of labels on hand. It is populated on every
+// open row, not just blocked ones, but it can also carry text ("Unlabeled"), so
+// only do arithmetic when the cell is genuinely numeric — a note must never turn
+// into a bogus shortfall figure in front of a customer.
+//
+// It is also, by the team's own account, the least reliable column on the sheet:
+// labels often arrive and sit in receiving before anyone updates it, so a recorded
+// 0 frequently means "not logged yet" rather than "none here". That's why the
+// export shows the count on EVERY row (blanking it on all but the blocked rows
+// read as broken data) and states its provenance in the sheet header, rather than
+// dressing a stale number up as fact.
+function _ooLabelsOnHand(r) {
+  var raw = (r['Labels'] == null ? '' : String(r['Labels'])).trim();
+  var numeric = raw !== '' && /^[\d,]+(\.\d+)?$/.test(raw);
+  return { raw: raw, num: numeric ? num(raw) : null };
+}
+// Cell values: a number when countable, the raw note when not, '' when the sheet
+// has nothing. '' matters — an optional column that is '' on every row gets
+// dropped from the workbook entirely (see _ooBuildSheet).
+function _ooOnHandCell(r) {
+  var lb = _ooLabelsOnHand(r);
+  return lb.num !== null ? lb.num : lb.raw;
+}
+// Short is reported for every row, 0 included: "0 short" is real information
+// (labels are all in), which is exactly what a blank used to hide.
+function _ooShortCell(r) {
+  var lb = _ooLabelsOnHand(r);
+  if (lb.num === null) return '';
+  return Math.max(0, num(r['Order Amount']) - lb.num);
+}
+// Stated on both sheets. The counts are worth sending — a customer wants to know
+// 4,550 of 5,000 labels are in — but they are only as fresh as the planning sheet,
+// so the report says so instead of letting a stale 0 speak for itself.
+var LABEL_PROVENANCE = 'Labels on Hand is what our planning sheet showed when this file was generated; '
+  + 'it can lag labels already received, so a 0 may mean \u201cnot logged yet\u201d rather than \u201cnone here\u201d. '
+  + 'Labels Short is Order Amount minus labels on hand.';
+function _ooEmptyCell(v) { return v === '' || v === null || v === undefined; }
+// Build one worksheet from a column model. Columns flagged `optional` are dropped
+// from the workbook when no row in THIS customer's book fills them: roughly half
+// our orders carry no customer PO #, and a column of blanks reads as missing data
+// rather than "doesn't apply here". `total`, where set, lands in a closing TOTAL
+// row; the label goes in the first surviving column, which is always text.
+function _ooBuildSheet(headerLines, cols, items) {
+  var grid = items.map(function(it){ return cols.map(function(c){ return c.get(it); }); });
+  var keep = [], i, j, filled;
+  for (j = 0; j < cols.length; j++) {
+    if (!cols[j].optional) { keep.push(j); continue; }
+    filled = false;
+    for (i = 0; i < grid.length; i++) { if (!_ooEmptyCell(grid[i][j])) { filled = true; break; } }
+    if (filled) keep.push(j);
+  }
+  var rows = [], hasTotal = false;
+  for (i = 0; i < headerLines.length; i++) rows.push([headerLines[i]]);
+  rows.push([]);
+  rows.push(keep.map(function(j){ return cols[j].header; }));
+  for (i = 0; i < grid.length; i++) rows.push(keep.map(function(j){ return grid[i][j]; }));
+  for (j = 0; j < keep.length; j++) if (cols[keep[j]].total !== undefined) hasTotal = true;
+  if (hasTotal) {
+    rows.push(keep.map(function(j, k){
+      if (cols[j].total !== undefined) return cols[j].total;
+      return k === 0 ? 'TOTAL' : '';
+    }));
+  }
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = keep.map(function(j){ return { wch: cols[j].width }; });
+  ws['!merges'] = headerLines.map(function(_unused, r){ return { s:{r:r,c:0}, e:{r:r,c:keep.length-1} }; });
+  return ws;
+}
+// Small download button. Lives on Customer Breakdown rows (whose click toggles
+// the drilldown) and on Labels-tab brand headers, hence stopPropagation.
+function _ooExportBtn(brand, px) {
+  var s = px || 12;
+  return '<button onclick="event.stopPropagation();exportOpenOrdersForCustomer('+jsStr(brand)+')" '
+    + 'title="Export '+esc(brand)+' open orders to Excel" '
+    + 'style="background:transparent;border:none;cursor:pointer;color:#5f5e5a;padding:2px;line-height:0;border-radius:4px;" '
+    + 'onmouseover="this.style.color=\'#85B7EB\'" onmouseout="this.style.color=\'#5f5e5a\'">'
+    + '<svg width="'+s+'" height="'+s+'" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 1v7M3.5 5.5l3 3 3-3M2 11h9"/></svg>'
+    + '</button>';
+}
+function exportOpenOrdersForCustomer(brand) {
+  if (typeof XLSX === 'undefined') { alert('Export library not loaded yet, please try again.'); return; }
+  var name = (brand == null ? '' : String(brand)).trim();
+  var items = _ooBrandRows(name);
+  if (!items.length) { alert('No open orders on the books for ' + (name || 'this customer') + '.'); return; }
+
+  var now = new Date();
+  var dateStr = now.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  var totalUnits = 0, blocked = [], blockedUnits = 0, blockedOnHand = 0, blockedShort = 0;
+  items.forEach(function(it){
+    var u = num(it.row['Order Amount']);
+    totalUnits += u;
+    if (!_ooIsLabelBlocked(it.row)) return;
+    blocked.push(it);
+    blockedUnits += u;
+    // Only countable rows contribute to the label totals — a row reading
+    // "Unlabeled" would otherwise silently count as zero on hand.
+    var lb = _ooLabelsOnHand(it.row);
+    if (lb.num !== null) { blockedOnHand += lb.num; blockedShort += Math.max(0, u - lb.num); }
+  });
+
+  var wb = XLSX.utils.book_new();
+  var subtitle = name + '  ·  ' + items.length + ' open order' + (items.length===1?'':'s')
+    + '  ·  ' + totalUnits.toLocaleString() + ' units  ·  Generated ' + dateStr;
+  // Say the basis out loud: this total includes sample-pack and bulk orders, while
+  // the dashboard's Customer Breakdown counts production units only, so the two
+  // figures can differ for the same customer and that must not read as an error.
+  var basis = 'Open orders on the books (Complete/RTS excluded), powder and capsule, oldest first by weeks on the books.'
+    + '  Includes production, sample-pack and bulk orders.'
+    + '  ' + LABEL_PROVENANCE
+    + (blocked.length
+        ? '  ' + blocked.length + ' order' + (blocked.length===1?'':'s') + ' (' + blockedUnits.toLocaleString()
+          + ' units) are held for labels — see the Labels Needed sheet.'
+        : '');
+
+  // ── Sheet 1: the open book ──
+  // Column order is the customer-facing one: the two reference numbers they can
+  // look up first, then the order, then its label position. Promise Date / Notes
+  // and Label Status Update are deliberately absent — internal hand-written
+  // scratch notes that must not leave the building. PO # and the label columns
+  // are optional: they vanish when this customer's book has nothing in them.
+  var s1cols = [
+    { header:'Invoice / Estimate #', width:18, optional:true,
+      get:function(it){ return (it.row['Invoice / Estimate #']||'').trim(); } },
+    { header:'PO #', width:16, optional:true,
+      get:function(it){ return (it.row['P.O. #'] || it.row['PO #'] || '').toString().trim(); } },
+    { header:'Product', width:52,
+      get:function(it){ return (it.row['Product Name']||'').trim(); } },
+    { header:'Order Amount', width:13, total:totalUnits,
+      get:function(it){ return num(it.row['Order Amount']); } },
+    { header:'Weeks on Books', width:15,
+      get:function(it){ var w = (it.row['# of Weeks on the Books']||'').toString().trim(); return w ? num(w) : ''; } },
+    { header:'Planning Status', width:19,
+      get:function(it){ return (it.row['Planning Status']||'').trim(); } },
+    { header:'Labels on Hand', width:15, optional:true,
+      get:function(it){ return _ooOnHandCell(it.row); } },
+    { header:'Labels Short', width:13, optional:true,
+      get:function(it){ return _ooShortCell(it.row); } }
+  ];
+  XLSX.utils.book_append_sheet(wb, _ooBuildSheet([
+    'DTF Operations Center — Open Orders',
+    subtitle,
+    basis
+  ], s1cols, items), 'Open Orders');
+
+  // ── Sheet 2: labels detail — only when something is actually blocked, so a
+  // clean book doesn't ship an empty sheet the customer has to interpret. Same
+  // column order as sheet 1 minus Planning Status: every row here is Not Enough
+  // Labels by definition. ──
+  if (blocked.length) {
+    var s2cols = [
+      { header:'Invoice / Estimate #', width:18, optional:true,
+        get:function(it){ return (it.row['Invoice / Estimate #']||'').trim(); } },
+      { header:'PO #', width:16, optional:true,
+        get:function(it){ return (it.row['P.O. #'] || it.row['PO #'] || '').toString().trim(); } },
+      { header:'Product', width:52,
+        get:function(it){ return (it.row['Product Name']||'').trim(); } },
+      { header:'Ordered', width:12, total:blockedUnits,
+        get:function(it){ return num(it.row['Order Amount']); } },
+      { header:'Weeks on Books', width:15,
+        get:function(it){ var w = (it.row['# of Weeks on the Books']||'').toString().trim(); return w ? num(w) : ''; } },
+      { header:'Labels on Hand', width:15, total:blockedOnHand,
+        get:function(it){ return _ooOnHandCell(it.row); } },
+      { header:'Short', width:12, total:blockedShort,
+        get:function(it){ return _ooShortCell(it.row); } }
+    ];
+    XLSX.utils.book_append_sheet(wb, _ooBuildSheet([
+      'Held for labels — ' + name,
+      blocked.length + ' order' + (blocked.length===1?'':'s') + '  ·  ' + blockedUnits.toLocaleString() + ' units  ·  Generated ' + dateStr,
+      LABEL_PROVENANCE
+    ], s2cols, blocked), 'Labels Needed');
+  }
+
+  // Customer name + today's date, local (not UTC — an evening export should not
+  // carry tomorrow's date). Non-alphanumerics collapse to _ so the name is safe
+  // as a filename and still readable: "Dragon Pharma" -> Dragon_Pharma.
+  var safe = name.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'Customer';
+  var ymd = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+  XLSX.writeFile(wb, 'DTF_Open_Orders_' + safe + '_' + ymd + '.xlsx');
+}
+
 function renderOrders() {
   fetchOpenOrdersIfNeeded(false);
   // renderOrdersSummary builds the whole page and picks which sections to
@@ -9804,12 +10069,32 @@ function computeYTDDailyAvgByType() {
   };
 }
 
-// A row is classified as Sample Pack / Bulk Powder (rather than Production
-// Units) when Bottles/Jars is "N/A" (no retail packaging), OR the Order Amount
-// is literally 1 (convention for bulk-powder orders where the real volume is
-// encoded in the product name, not the amount).
+// A row is classified as Sample Pack / Bulk Powder (rather than Production Units)
+// when the Order Amount is literally 1 (convention for bulk-powder orders where
+// the real volume is encoded in the product name, not the amount), OR it has no
+// retail packaging (Bottles/Jars "N/A") AND the product name says it is sticks,
+// samples or bulk.
+//
+// The packaging test alone used to be enough, but "N/A" only means "not a bottle
+// or jar" — Dragon Pharma's Creamy Rice ships in a gusset bag, and treating it as
+// bulk understated that customer by 10,000 units on the production-only Customer
+// Breakdown. Most gusset-bag rows spell the bag out in Bottles/Jars; the two left
+// as "N/A" now read as production, like their siblings.
+//
+// _OO_SAMPLE_WORDS covers the wording ("Stick Pack", "sticks to be bulk packed",
+// "150s Sample Tub", "Servings"). _OO_STICK_CODE catches the internal stick-pack
+// lot-code marker (HHWTsp-051226, EVELspb-072825, MOHYspv6-042325) for stick rows
+// whose name only says "packed into 6ct retail boxes" and carries no buzzword.
+// Both tests sit behind the N/A gate, so a bottled product that happens to carry
+// an "sp" code (Sinus Pro, VDSP-061026) or the word "sample" in a production note
+// can't be misread as a sample order.
+var _OO_SAMPLE_WORDS = /stick|sample|bulk|serving/i;
+var _OO_STICK_CODE   = /\(\s*[A-Za-z]{2,}sp[a-z]?\d?\s*-\s*\d{4,6}\s*\)/i;
 function isSamplePackOrBulk(r) {
-  return (r['Bottles/Jars']||'').trim() === 'N/A' || num(r['Order Amount']) === 1;
+  if (num(r['Order Amount']) === 1) return true;
+  if ((r['Bottles/Jars']||'').trim() !== 'N/A') return false;
+  var name = (r['Product Name']||'');
+  return _OO_SAMPLE_WORDS.test(name) || _OO_STICK_CODE.test(name);
 }
 
 // Short number formatting for chart centers (612,173 -> "612K").
@@ -10068,14 +10353,21 @@ function renderOrdersSummary() {
     .sort(function(a,b){ return b.total - a.total; });
   var maxCustomerTotal = customersAll.length ? customersAll[0].total : 0;
   var customerLimit = customerChartLimit === 'all' ? customersAll.length : parseInt(customerChartLimit, 10);
-  var customersVisible = customersAll.slice(0, customerLimit);
+  // EVERY customer is rendered, each tagged with its rank and lowercased name;
+  // Top 10/25/All and the name search then decide visibility in the DOM
+  // (filterOOCustomers), never by re-rendering. That's what lets you type in the
+  // search box without the page rebuilding under the caret — same trade the
+  // Procurement/Materials search boxes make. ~40 rows, so the cost is nothing.
   var customersHidden  = customersAll.slice(customerLimit);
-  // Collapse an orphan drilldown if the open customer is no longer visible
-  // (dropped from the data, type filter flipped, or limit shrank past it).
-  if (customerDrilldown && !customersVisible.some(function(c){ return c.name === customerDrilldown; })) {
+  // Collapse an orphan drilldown only when that customer left the list entirely
+  // (dropped from the data, or the type filter zeroed them out). A row hidden by
+  // the limit or the search keeps its open state and comes back expanded.
+  if (customerDrilldown && !customersAll.some(function(c){ return c.name === customerDrilldown; })) {
     customerDrilldown = null;
   }
   var hiddenUnits = customersHidden.reduce(function(a,c){ return a + c.total; }, 0);
+  var ooQ = (ooCustSearch || '').trim().toLowerCase();
+  var ooMatchCount = 0;
 
   function customerPillStyle(active) {
     return 'padding:4px 12px;border-radius:5px;border:1.5px solid '+(active?'#378ADD':'transparent')+';background:'+(active?'#0C447C':'transparent')+';color:'+(active?'#85B7EB':'#888780')+';font-weight:'+(active?'500':'400')+';font-size:11px;cursor:pointer;font-family:system-ui;transition:all .15s;';
@@ -10091,8 +10383,10 @@ function renderOrdersSummary() {
     + '<button onclick="setCustomerChartLimit(\'all\')" style="'+customerPillStyle(customerChartLimit==='all')+'">All</button>'
     + '</div>';
 
-  var customerRowColTpl = '170px 1fr 110px';
-  var customerRowsHTML = customersVisible.map(function(c){
+  // Trailing fixed column holds the per-customer export button — a real column
+  // rather than an absolute overlay so the bar and unit figures never shift.
+  var customerRowColTpl = '170px 1fr 110px 22px';
+  var customerRowsHTML = customersAll.map(function(c, ci){
     var pPct = maxCustomerTotal ? (c.powder  / maxCustomerTotal * 100) : 0;
     var cPct = maxCustomerTotal ? (c.capsule / maxCustomerTotal * 100) : 0;
     var totalPct = maxCustomerTotal ? (c.total / maxCustomerTotal * 100) : 0;
@@ -10131,9 +10425,19 @@ function renderOrdersSummary() {
       + '</div>'
       + barHTML
       + '<div style="text-align:right;color:#e8e6e0;font-variant-numeric:tabular-nums;font-weight:500;font-size:12px;">'+c.total.toLocaleString()+'</div>'
+      + '<div style="text-align:right;line-height:0;">'+_ooExportBtn(c.name)+'</div>'
       + '</div>';
 
-    if (!isOpen) return summaryRow;
+    // One wrapper per customer so hiding a row hides its drilldown with it.
+    // Initial display is decided here (a search query wins over the limit) so the
+    // list paints already-filtered — no flash of the full roster on load/refresh.
+    var ooVisible = ooQ ? (c.name.toLowerCase().indexOf(ooQ) !== -1) : (ci < customerLimit);
+    if (ooVisible) ooMatchCount++;
+    function ooWrap(inner) {
+      return '<div class="oo-cust-row" data-oo-cust="'+esc(c.name.toLowerCase())+'" data-oo-rank="'+ci+'"'
+        + ' style="display:'+(ooVisible ? 'block' : 'none')+';">' + inner + '</div>';
+    }
+    if (!isOpen) return ooWrap(summaryRow);
 
     // Drill-down: the customer's orders, scoped to the active type view and
     // sorted by weeks on the books desc (oldest first), ties broken by units.
@@ -10151,6 +10455,15 @@ function renderOrdersSummary() {
                : customerChartView === 'powder'  ? LINE_COLOR['line#1']
                : '#888780';
     var drillColTpl = '72px 1fr 90px 70px 220px';
+    // Labelled twin of the row's icon button — the drilldown is where sales sits
+    // when pulling a customer's report, so here it says what it does in words.
+    var drillExportBar = '<div style="display:flex;justify-content:flex-end;margin:0 0 8px;">'
+      + '<button onclick="event.stopPropagation();exportOpenOrdersForCustomer('+jsStr(c.name)+')" '
+      +   'style="font-size:11px;padding:4px 10px;border:1.5px solid #378ADD;border-radius:7px;background:#0C447C;color:#85B7EB;font-weight:500;cursor:pointer;font-family:system-ui;display:inline-flex;align-items:center;gap:5px;">'
+      +   '<svg width="11" height="11" viewBox="0 0 13 13" fill="none" stroke="#85B7EB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 1v7M3.5 5.5l3 3 3-3M2 11h9"/></svg>'
+      +   'Export open orders'
+      + '</button>'
+      + '</div>';
     var drillHeaders = '<div style="display:grid;grid-template-columns:'+drillColTpl+';gap:10px;font-size:9px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.06em;padding:4px 2px 6px;border-bottom:0.5px solid #2c2c2a;">'
       + '<div>Type</div><div>Product</div>'
       + '<div style="text-align:right;">Units</div>'
@@ -10180,30 +10493,49 @@ function renderOrdersSummary() {
       ? '<div style="padding:14px 0;text-align:center;color:#5f5e5a;font-size:11px;font-style:italic;font-family:system-ui;">No orders match the current filter.</div>'
       : '';
     var drillHTML = '<div style="background:#0f1012;border-left:2px solid '+accent+';padding:10px 14px 12px 14px;margin:0 -6px;border-bottom:0.5px solid #2c2c2a;">'
-      + drillHeaders + drillBody + emptyNote
+      + drillExportBar + drillHeaders + drillBody + emptyNote
       + '</div>';
 
-    return summaryRow + drillHTML;
+    return ooWrap(summaryRow + drillHTML);
   }).join('');
 
-  var customerHiddenFooter = customersHidden.length > 0
-    ? '<div style="padding:10px 2px;font-size:11px;color:#5f5e5a;font-style:italic;font-family:system-ui;text-align:center;border-bottom:0.5px solid #2c2c2a;">+' + customersHidden.length + ' more customer' + (customersHidden.length===1?'':'s') + ' \u00b7 ' + hiddenUnits.toLocaleString() + ' units not shown</div>'
-    : '';
+  // Two notes live in the DOM at once and filterOOCustomers swaps which is shown:
+  // the "+N more" limit note (server-rendered, needs the unit math) and the search
+  // match count (filled in by JS). Keeping both avoids recomputing units per keystroke.
+  var noteStyle = 'padding:10px 2px;font-size:11px;color:#5f5e5a;font-style:italic;font-family:system-ui;text-align:center;border-bottom:0.5px solid #2c2c2a;';
+  var customerHiddenFooter = '<div id="oo-cust-note-limit" style="'+noteStyle+'display:'+((customersHidden.length > 0 && !ooQ) ? 'block' : 'none')+';">'
+      + (customersHidden.length > 0 ? '+' + customersHidden.length + ' more customer' + (customersHidden.length===1?'':'s') + ' \u00b7 ' + hiddenUnits.toLocaleString() + ' units not shown' : '')
+    + '</div>'
+    + '<div id="oo-cust-note-search" style="'+noteStyle+'display:'+(ooQ ? 'block' : 'none')+';">'
+      + (ooQ ? esc(_ooMatchNote(ooMatchCount, customersAll.length, ooCustSearch)) : '')
+    + '</div>';
   var customerLegend = customerChartView === 'all' && customersVisible.length > 0
     ? '<div style="display:flex;gap:18px;padding:10px 2px 2px;font-size:11px;color:#888780;font-family:system-ui;">'
     +   '<div style="display:inline-flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:2px;background:'+LINE_COLOR['line#1']+';"></span>Powder</div>'
     +   '<div style="display:inline-flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:2px;background:'+LINE_COLOR['line#2']+';"></span>Capsule</div>'
     + '</div>'
     : '';
+  var emptyStyle = 'padding:20px 0;text-align:center;color:#5f5e5a;font-size:12px;font-style:italic;font-family:system-ui;';
   var customerEmpty = customersAll.length === 0
-    ? '<div style="padding:20px 0;text-align:center;color:#5f5e5a;font-size:12px;font-style:italic;font-family:system-ui;">No customers for the selected view.</div>'
-    : '';
+    ? '<div style="'+emptyStyle+'">No customers for the selected view.</div>'
+    : '<div id="oo-cust-empty" style="'+emptyStyle+'display:'+((ooQ && ooMatchCount === 0) ? 'block' : 'none')+';">'
+        + (ooQ && ooMatchCount === 0 ? 'No customer matches \u201c'+esc(ooCustSearch)+'\u201d.' : '')
+      + '</div>';
+  // Reuses the .cust-search-* tokens the Customers tab and Logistics log already
+  // use, so every search box on the dashboard looks and behaves the same. Typing
+  // calls filterOOCustomers(), which only flips row visibility — no re-render.
+  var ooCustSearchHTML = '<div class="cust-search-wrap" style="min-width:0;">'
+    + '<span class="cust-search-icon"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.25" stroke="#888780" stroke-width="1.3"/><line x1="9.2" y1="9.2" x2="12.2" y2="12.2" stroke="#888780" stroke-width="1.3" stroke-linecap="round"/></svg></span>'
+    + '<input id="ooCustSearchInput" type="text" class="cust-search-input" placeholder="Search customers&hellip;" aria-label="Search customers" autocomplete="off" style="width:190px;height:28px;" value="'+esc(ooCustSearch)+'" oninput="filterOOCustomers()" onkeydown="onOOCustSearchKey(event)" />'
+    + '<button id="ooCustSearchClear" type="button" class="cust-search-clear" aria-label="Clear search" style="display:'+(ooCustSearch?'inline-flex':'none')+';" onclick="clearOOCustSearch()">&times;</button>'
+    + '</div>';
   var customerChartHTML = '<div style="background:#141618;border:0.5px solid #2c2c2a;border-radius:10px;padding:14px 16px;margin-bottom:16px;">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">'
     +   '<div style="font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;">Customer Breakdown</div>'
-    +   '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+    +   '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'
     +     customerViewToggle
     +     customerLimitToggle
+    +     ooCustSearchHTML
     +   '</div>'
     + '</div>'
     + customerRowsHTML
@@ -10301,6 +10633,7 @@ function renderOrdersSummary() {
             var info = byBrand[brand];
             var brandHeader = '<div style="background:#1e2124;padding:10px 16px 6px;display:flex;align-items:baseline;gap:12px;">'
               + '<div style="font-size:13px;font-weight:600;color:#e8e6e0;font-family:system-ui;">'+esc(brand)+'</div>'
+              + (brand !== '(no brand)' ? _ooExportBtn(brand, 11) : '')
               + '<div style="font-size:11px;color:#F09595;font-family:system-ui;font-variant-numeric:tabular-nums;">'+info.items.length+' product'+(info.items.length===1?'':'s')+' \u00b7 '+info.units.toLocaleString()+' units</div>'
               + '</div>';
             var rows = info.items.map(function(lb, idx){
@@ -10768,6 +11101,23 @@ function renderProcurement() {
       return {key:qk, lots:d.lots.size, units:d.units, pctOfTotal:pct, avgPerUnit:avgPerUnit};
     });
 
+    // All-time rollup across every quarter in the table (Q1 2025 → the current,
+    // partial one), so a card answers "how many of these have we used, ever"
+    // without adding up the rows by hand. Lots are UNIONED, not summed: a lot that
+    // ran across a quarter boundary sits in two quarters' sets and summing the
+    // per-quarter counts would count it twice. The % denominator is the same
+    // totalQtrUnits the per-quarter column uses, summed over the same quarters.
+    var allLotSet = new Set(), allUnits = 0, allDenom = 0, firstQk = null;
+    displayQtrs.forEach(function(qk) {
+      allDenom += (totalQtrUnits[qk] || 0);
+      var dd = qmap[qk];
+      if (!dd) return;
+      allUnits += dd.units;
+      dd.lots.forEach(function(l){ allLotSet.add(l); });
+      if (!firstQk && dd.units > 0) firstQk = qk;
+    });
+    var allPct = allDenom > 0 ? parseFloat(((allUnits / allDenom) * 100).toFixed(1)) : null;
+
     // YTD this year
     var ytdLots = new Set(), ytdUnits = 0, ytdFinalUnits = 0;
     allRowsCombined.forEach(function(r) {
@@ -10817,6 +11167,7 @@ function renderProcurement() {
     return {sku:sku, qtrs:qtrs, tag:tag, ytdLots:ytdLots.size, ytdUnits:ytdUnits,
             ytd25Lots:ytd25Lots.size, ytd25Units:ytd25Units, ytdPct:ytdPct, ytdPct25:ytdPct25,
             ytdChg:ytdChg, ytdAvgPerUnit:ytdAvgPerUnit, ytd25AvgPerUnit:ytd25AvgPerUnit,
+            allUnits:allUnits, allLots:allLotSet.size, allPct:allPct, firstQk:firstQk,
             custBreakdown:custBreakdown};
   });
 
@@ -10972,6 +11323,27 @@ function renderProcurement() {
 
     var custSection = custRows;
 
+    // Closing total row: everything used since tracking began. Divider + tint +
+    // bold marks it as a rollup, matching the customer table's subtotal rows; the
+    // comparison cells and the volume bar stay em-dashed since a sum has no prior
+    // period to compare against and no place on the per-quarter scale.
+    var totalRow = '';
+    if (cd.allUnits > 0) {
+      var tdT = 'padding:7px 10px;border-top:1.5px solid #444441;white-space:nowrap;font-size:12px;background:#1e2124;';
+      var sinceLbl = cd.firstQk ? quarterLabel(cd.firstQk) : quarterLabel(displayQtrs[0]);
+      totalRow = '<tr>'
+        +'<td style="'+tdT+'padding-left:14px;color:#e8e6e0;font-weight:600;" title="All '+esc(label)+' usage from '+esc(sinceLbl)+' through today, including the current partial quarter.">Total'
+          +'<span style="font-size:10px;font-weight:500;letter-spacing:.04em;padding:1px 5px;border:0.5px solid #444441;border-radius:4px;color:#888780;margin-left:6px;vertical-align:1px;">since '+esc(sinceLbl)+'</span>'
+        +'</td>'
+        +'<td style="'+tdT+'text-align:right;color:#e8e6e0;font-weight:600;">'+cd.allUnits.toLocaleString()+'</td>'
+        +'<td style="'+tdT+'text-align:right;color:#5f5e5a;">&#x2014;</td>'
+        +'<td style="'+tdT+'text-align:right;color:#888780;">'+(cd.allLots||'&#x2014;')+'</td>'
+        +'<td style="'+tdT+'text-align:right;color:#888780;">'+(cd.allPct!==null?cd.allPct+'%':'&#x2014;')+'</td>'
+        +'<td style="'+tdT+'text-align:right;color:#5f5e5a;">&#x2014;</td>'
+        +'<td style="'+tdT+'padding-right:14px;"></td>'
+      +'</tr>';
+    }
+
     var qtrSection = '<table style="width:100%;border-collapse:collapse;">'
       +'<thead><tr>'
         +'<th style="'+thSL+'">Quarter</th>'
@@ -10982,7 +11354,7 @@ function renderProcurement() {
         +'<th style="'+thS+'width:70px;">vs prev</th>'
         +'<th style="'+thS+'padding-right:14px;width:110px;">Volume</th>'
       +'</tr></thead>'
-      +'<tbody>'+tableRows+'</tbody>'
+      +'<tbody>'+tableRows+totalRow+'</tbody>'
     +'</table>';
 
     var activeTab = _procTab[sid] || 'qtr';
