@@ -106,7 +106,7 @@
     /* table-layout:fixed ignores min-width on <col>, so when the table overflows on
        mobile the flex Material column collapses to ~0 (WebKit). Pin it to a real
        width here so the name has room; desktop keeps its min-width flex behavior. */
-    col.matcol-name { width: 200px; }
+    col.matcol-name { width: 220px; }
     th.mat-pin-rank, td.mat-pin-rank { position: sticky; left: 0; z-index: 3; background: #1e2124; }
     th.mat-pin-name, td.mat-pin-name { position: sticky; left: 28px; z-index: 3; background: #1e2124; box-shadow: 6px 0 6px -4px rgba(0,0,0,.45); }
   }
@@ -116,7 +116,31 @@
      Hide columns that compress badly (sparklines, bar columns, secondary
      stats); stack two-column layouts; let the main nav scroll horizontally.
      Test at 390px (iPhone 14 portrait). All overrides are mobile-only. */
+  /* ── Phone: Order Aging status chips ──────────────────────────────────────
+     The chip grid is 120px + one max-content column per status, which runs off a
+     390px screen and forced a horizontal scroll past the filters people use most.
+     The group label gets its own full-width row and the chips fall into two even
+     columns beneath it, so the whole control sits inline with the page. The inline
+     grid-template-columns has to be overridden, hence !important. */
   @media (max-width: 768px) {
+    .agf-grid { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+    .agf-glabel { grid-column: 1 / -1 !important; margin: 4px 0 -2px; }
+    .agf-chip { padding: 6px 10px; gap: 7px; font-size: 12px; }
+    .agf-seg { display: flex; width: 100%; margin-bottom: 12px; }
+    .agf-seg button { flex: 1 1 0; padding: 8px 4px; font-size: 12px; }
+    /* ── Phone: Labels blocker rows ────────────────────────────────────────
+       Six columns (~600px) squeezed the product name into a ribbon four words
+       wide. Drop the header row and restack each line: type badge, then the full
+       product name, then units and weeks facing each other, then the two note
+       fields full width. Nothing is hidden — it just reads down instead of across. */
+    .lbl-hdr { display: none !important; }
+    .lbl-row { display: grid !important; grid-template-columns: 1fr auto !important;
+               gap: 3px 10px !important; padding: 10px 14px !important; align-items: start !important; }
+    .lbl-row > div:nth-child(1) { grid-column: 1 / -1; }                        /* type badge */
+    .lbl-row > div:nth-child(2) { grid-column: 1 / -1; font-size: 12.5px; }     /* product */
+    .lbl-row > div:nth-child(3) { grid-column: 1; text-align: left !important; font-weight: 500; }  /* units */
+    .lbl-row > div:nth-child(4) { grid-column: 2; text-align: right !important; }                    /* weeks */
+    .lbl-row > div:nth-child(5), .lbl-row > div:nth-child(6) { grid-column: 1 / -1; font-size: 11px; }
     .shell { padding: 8px; }
     .app-bar { padding: 0 8px; min-height: 56px; }
     /* App bar → two rows on phones: [logo · Refresh/Admin] on top, the full-width
@@ -589,7 +613,8 @@ var materialsData = [];
 // parseMaterials() keys by header and only keeps 5 fields — it would drop the T#
 // columns entirely. Built once from the same fetch (fetchMaterialsIfNeeded).
 var pickRows = [];           // [{ date, orderLot, part, material, slots:[{t, qty}] }]
-var inventoryByPart = {};    // DTF Part # -> { partNum, stock, material, lots } summed across lot rows (on-hand inventory)
+var inventoryByPart = {};    // DTF Part # -> { partNum, stock, material, lots, lotRows[] } — summed on-hand plus the per-lot detail
+var inventoryLotIndex = {};  // T# (upper) -> { part, qty, exp, received } for EVERY lot incl. depleted — FEFO needs the picked lot's expiry
 var inventoryLoaded = false; // true once a successful inventory fetch has populated inventoryByPart
 var demandByPart = {};       // DTF Part # -> forthcoming demand in KG, summed across the demand sheet
 var demandLoaded = false;    // true once a successful demand fetch has populated demandByPart
@@ -597,10 +622,15 @@ var demandLoaded = false;    // true once a successful demand fetch has populate
 // on re-navigation and page refresh, instead of re-waiting on Google's slow
 // published-CSV endpoint (the inventory sheet can take 15-60s to regenerate cold).
 var STOCK_CACHE_TTL = 10 * 60 * 1000; // 10 min — inventory/demand change slowly
-var INVENTORY_CACHE_KEY = 'dtf_inventory_cache_v1';
+var INVENTORY_CACHE_KEY = 'dtf_inventory_cache_v4';  // v4: discards any truncated payload cached before the size guard existed
 var DEMAND_CACHE_KEY = 'dtf_demand_cache_v1';
 var lotIndex = {};           // lot number -> { combined, brand, product } populated from the Lot # reference sheets
 var lotIndexLoaded = false;
+// In-flight guards for the four slow-moving feeds. The *Loaded flags above answer
+// "do we have data"; these answer "is a request already out". Both are needed now
+// that refreshStockFeeds() calls the fetchers on a timer: the loaded flags no longer
+// suppress repeat calls, and a cold inventory read can take ~60s.
+var _invFetching = false, _demandFetching = false, _matFetching = false, _lotIdxFetching = false;
 var TARGET_HIT_THRESHOLD = 0.99; // 99% = within 1% tolerance
 var ALL_LINES = ['Line #1', 'Line #2', 'Line #4'];
 var LINE_COLOR = {'line#1':'#378ADD','line#2':'#7F77DD','line#4':'#D4537E'};
@@ -796,6 +826,8 @@ var matYear = new Date().getFullYear(); // kept for renderMatInline compat
 var matWindow = 6; // lookback months: 6 | 12 | 0=all
 var matSearch = '';
 var matShowZeroUsage = false; // when true, also show on-hand ingredients with zero usage in the current window (mirrors showZeroDes on Jars/Bottles/etc.)
+var materialsFefoOnly = false;      // Materials toolbar "FEFO review" segment: only materials holding a lot that keeps getting picked past while at risk.
+var materialsExpiringOnly = false; // Materials toolbar "Expiring" segment: only rows with expired stock, stock dated within EXPIRY_SOON_DAYS, or FEFO risk.
 var materialsShortOnly = false; // Materials toolbar "Short only" toggle: hide rows whose Available is not Short (afterDemand >= 0). Persists across re-renders and sub-tab switches.
 var matSummaryView = 'quarter'; // expanded-view consumption summary breakdown: 'quarter' | 'customer'
 var drillCustomer = null; // Materials "By customer" → product drill: selected customer name, or null while showing the customer list. Reset when a different material is opened; cleared by the Back button.
@@ -1590,28 +1622,42 @@ function fetchData(fresh) {
   ]);
 }
 
-function fetchMaterialsIfNeeded() {
-  if (materialsData.length > 0) return;
-  fetchMaterialsCSV().then(function(t){
+function fetchMaterialsIfNeeded(force) {
+  if (materialsData.length > 0 && !force) return;
+  // Without this guard the pre-existing latch ("materialsData is still empty")
+  // lets every render of the Materials view fire another fetch while the first
+  // is in flight — harmless when it happened once at load, not once a timer
+  // starts calling this on a schedule.
+  if (_matFetching) return;
+  _matFetching = true;
+  fetchMaterialsCSV(!!force).then(function(t){
+    _matFetching = false;
     var parsed = parseMaterials(t);
     if (parsed.length > 0) {
       materialsData = parsed;
       // Same raw text, parsed positionally for Recall Tracking (see parsePickRows).
       pickRows = parsePickRows(t);
+      _fefoCache = null;   // pick rows are half the FEFO input
       if (mainSection === 'procurement' && procView === 'materials') renderMaterials();
       // Route through render() (not renderRecall directly) so the wrapper preserves
       // focus + caret — otherwise finishing the pick-sheet fetch mid-typing wipes
       // the input. recallQuery is kept live via onRecallInput, so the value survives.
       if (mainSection === 'quality') render();   // recall or blend: run any pending trace
     }
+  }).catch(function(e){
+    _matFetching = false;
+    console.warn('Materials refresh failed: ' + (e && e.message ? e.message : e));
   });
 }
 
 function fetchInventoryCSV(fresh) {
-  // No cachebust: a stable URL lets Google's CDN serve its cached copy (~0.25s)
-  // instead of treating each request as new and regenerating cold (up to ~60s).
-  // Inventory changes slowly, so CDN-level staleness (minutes) is acceptable.
-  return fetch(CSV_INVENTORY, NO_CACHE).then(function(r){
+  // Default (initial load): no cachebust, so a stable URL lets Google's CDN serve
+  // its cached copy (~0.25s) instead of treating each request as new and
+  // regenerating cold (up to ~60s). fresh=true emits a unique token and forces a
+  // true origin read — used by every *refresh* path, where the whole point is to
+  // see an edit the user just made. Without it a refresh can be answered from the
+  // same 5-minute CDN bucket it was trying to escape.
+  return fetch(fresh ? bustUrl(CSV_INVENTORY, true) : CSV_INVENTORY, NO_CACHE).then(function(r){
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.text();
   }).then(function(text){
@@ -1620,39 +1666,128 @@ function fetchInventoryCSV(fresh) {
   }).catch(function(){ return ''; });
 }
 
-// Aggregate on-hand inventory into { partNum -> {partNum, stock, material, lots} }.
-// Source has one row per received lot; we sum "Current Stock" across lots for each
-// DTF Part #. Rows flagged "Ready To Archive" are depleted/retired (they carry 0
-// stock anyway) and are excluded.
+// Parse an inventory-sheet date ("8/18/2026"). Returns null for blank, malformed,
+// or out-of-range values — the sheet contains at least one "0/15/2026" — so a bad
+// cell reads as "no expiry recorded" instead of coercing to a date that would land
+// in the expired bucket and invent an alarm. Same year guard as the other feeds.
+function parseInvDate(v) {
+  var s = (v == null ? '' : String(v)).trim();
+  if (!s) return null;
+  var m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (!m) return null;
+  var mo = parseInt(m[1], 10), d = parseInt(m[2], 10), y = parseInt(m[3], 10);
+  if (y < 100) y += 2000;
+  if (!(mo >= 1 && mo <= 12) || !(d >= 1 && d <= 31) || y < 2015 || y > 2040) return null;
+  var dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;  // 2/31 etc.
+  return dt;
+}
+// Aggregate on-hand inventory into
+//   { partNum -> { partNum, stock, material, lots, lotRows[] } }
+// Source is one row per received lot: we sum "Current Stock" per DTF Part # and keep
+// the individual lots (T#, kg, expiry, receiving date, location, supplier, supplier
+// batch) so the Materials view can answer "which drum, where, expiring when".
+//
+// Only lots holding stock go into lotRows — a depleted lot's expiry date is not a
+// risk, and including them would bury the live ones. `lots` keeps counting every lot
+// row for that part, as it always has, so existing callers don't shift.
+//
+// Two data realities this must not paper over (measured on the live feed):
+//   • ~40% of lot rows, and over half the stock by weight, have a BLANK expiry.
+//     Those are counted separately (noExpiryKg) so the UI can state coverage rather
+//     than implying that undated stock is safe stock.
+//   • The archive filter lives upstream in the sheet's QUERY (where Col21 <> 'Yes'),
+//     so the old "Ready To Archive" check here never fired. Dropped rather than left
+//     as a comforting no-op; if that filter is ever removed from the sheet, this needs
+//     to come back for real.
 function parseInventory(text) {
   if (!text) return {};
   try {
     var rows = parseCSVMultiline(text);
     var byPart = {};
+    inventoryLotIndex = {};
     rows.forEach(function(r){
       var part = (r['DTF Part #'] || '').trim();
       if (!part) return;
-      if ((r['Ready To Archive'] || '').trim().toLowerCase() === 'yes') return;
-      if (!byPart[part]) byPart[part] = { partNum: part, stock: 0, material: (r['Material Name'] || '').trim(), lots: 0 };
+      if (!byPart[part]) byPart[part] = { partNum: part, stock: 0, material: (r['Material Name'] || '').trim(), lots: 0, lotRows: [] };
       var p = byPart[part];
-      p.stock += num(r['Current Stock']);
-      if ((r['DTF Lot #'] || '').trim()) p.lots += 1;
+      var qty = num(r['Current Stock']);
+      p.stock += qty;
+      var lotNo = (r['DTF Lot #'] || '').trim();
+      if (lotNo) p.lots += 1;
+      // Every lot, depleted included: FEFO detection has to know the expiry of the
+      // lot that was actually picked, and that one is usually spent by now.
+      if (lotNo) {
+        var xd = parseInvDate(r['EXP. Date']);
+        inventoryLotIndex[lotNo.toUpperCase()] = {
+          part: part, qty: qty, exp: xd ? xd.getTime() : null,
+          received: (r['Receiving Date'] || '').trim()
+        };
+      }
       if (!p.material && r['Material Name']) p.material = (r['Material Name'] || '').trim();
+      if (qty > 0) {
+        var exp = parseInvDate(r['EXP. Date']);
+        p.lotRows.push({
+          lot: lotNo,
+          qty: qty,
+          exp: exp ? exp.getTime() : null,        // ms so the sessionStorage round-trip survives
+          expRaw: (r['EXP. Date'] || '').trim(),  // kept to tell "blank" from "unparseable"
+          received: (r['Receiving Date'] || '').trim(),
+          loc: (r['Locations'] || '').trim(),
+          supplier: (r['Supplier/MFG'] || '').trim(),
+          batch: (r['Lot / Batch'] || '').trim(),
+          status: (r['Status'] || '').trim()
+        });
+      }
     });
     return byPart;
   } catch (e) { return {}; }
 }
 
-function fetchInventoryIfNeeded() {
-  if (inventoryLoaded) return;
-  fetchInventoryCSV().then(function(t){
+// A truncated or half-generated CSV parses fine — it is merely short — and the old
+// "more than zero parts" test accepted it, cached it for the whole session, and left
+// every stock, cover and expiry cell reading "—" while inventoryLoaded insisted all
+// was well. Same failure mode applyFreshData already guards against for production
+// rows: a dataset that collapses is a bad response, not news. So require a plausible
+// size and otherwise keep what we have, because stale-but-whole beats fresh-but-gutted.
+var INVENTORY_MIN_PARTS = 200;     // the sheet carries ~1,170; anything near zero is a bad fetch
+function _inventoryLooksComplete(parsed, current) {
+  var n = Object.keys(parsed || {}).length;
+  if (n < INVENTORY_MIN_PARTS) return false;
+  var have = Object.keys(current || {}).length;
+  return !(have && n < have * 0.8);
+}
+function fetchInventoryIfNeeded(force) {
+  if (inventoryLoaded && !force) return;
+  if (_invFetching) return;   // a cold inventory read can take ~60s; never stack them
+  _invFetching = true;
+  fetchInventoryCSV(!!force).then(function(t){
+    _invFetching = false;
+    // parseInventory rebuilds inventoryLotIndex as a side effect, so a rejected parse
+    // must not leave its scraps behind for the FEFO detector.
+    var keepIndex = inventoryLotIndex;
     var parsed = parseInventory(t);
-    if (Object.keys(parsed).length > 0) {
+    if (_inventoryLooksComplete(parsed, inventoryByPart)) {
       inventoryByPart = parsed;
       inventoryLoaded = true;
-      try { sessionStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify({ byPart: parsed, ts: Date.now() })); } catch(e) {}
+      // The FEFO memo is keyed on row/lot *counts*, which a corrected expiry date
+      // leaves untouched — so replacing the data has to drop it explicitly or the
+      // stale computation outlives the stale input.
+      _fefoCache = null;
+      try { sessionStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify({ byPart: parsed, lotIndex: inventoryLotIndex, ts: Date.now() })); } catch(e) {}
       if (mainSection === 'procurement' && procView === 'materials') renderMaterials();
+    } else {
+      inventoryLotIndex = keepIndex;
+      _fefoCache = null;
+      console.warn('Inventory fetch rejected: ' + Object.keys(parsed || {}).length
+        + ' parts parsed (need at least ' + INVENTORY_MIN_PARTS + ' and 80% of the '
+        + Object.keys(inventoryByPart || {}).length + ' already held). Keeping existing data.');
     }
+  }).catch(function(e){
+    // Belt and braces: an in-flight latch that never clears would silently disable
+    // every future refresh, which is the exact failure this guard exists to avoid.
+    _invFetching = false;
+    console.warn('Inventory refresh failed: ' + (e && e.message ? e.message : e));
   });
 }
 
@@ -1668,6 +1803,261 @@ function stockForParts(parts) {
   return found ? total : null;
 }
 
+// ── Expiry position ───────────────────────────────────────────────────────
+// Collect every in-stock lot for a list of part #s and answer: what is expiring,
+// when, and how much of it will still be here when it does.
+//
+// The risk figure is a FEFO walk. Lots are consumed first-expiry-first-out, so for
+// each lot we compare the stock queued up to and including it against what the
+// material can plausibly consume before that lot's date (rate x months). Whatever
+// the run rate cannot reach by then is at risk of expiring unused. Summed over the
+// lots, that is riskKg.
+//
+// Deliberate limits, so nobody reads more into the number than it carries:
+//   - FEFO is an assumption about picking, not an observation. If the floor picks by
+//     location instead of date, real exposure is worse than this.
+//   - rate 0 (no usage in the window) means NOTHING burns down, so every dated kg is
+//     at risk. That is the honest reading, and it is where the biggest exposure sits,
+//     but callers must label it "no usage" rather than dress it as a forecast.
+//   - Undated lots go to noExpiryKg and are never folded into the risk figure. Over
+//     half the stock by weight has no date; treating that as safe would make this
+//     whole view a lie of omission.
+//   - Already-expired stock is reported on its own (expiredKg) and kept out of
+//     riskKg: it is not "at risk", it is a disposition decision that already landed.
+var _EXPIRY_MS_PER_DAY = 86400000;
+function _expiryToday() { var n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime(); }
+function expiryPosition(parts, ratePerMonth) {
+  var today = _expiryToday();
+  var lots = [], i, j, rec;
+  for (i = 0; i < (parts || []).length; i++) {
+    rec = inventoryByPart[parts[i]];
+    if (!rec || !rec.lotRows) continue;
+    for (j = 0; j < rec.lotRows.length; j++) {
+      var lr = rec.lotRows[j];
+      lots.push({
+        part: parts[i], lot: lr.lot, qty: lr.qty, exp: lr.exp, expRaw: lr.expRaw,
+        received: lr.received, loc: lr.loc, supplier: lr.supplier, batch: lr.batch,
+        days: lr.exp == null ? null : Math.round((lr.exp - today) / _EXPIRY_MS_PER_DAY)
+      });
+    }
+  }
+  var out = {
+    lots: lots, dated: 0, undated: 0,
+    expiredKg: 0, expiredLots: 0, noExpiryKg: 0, noExpiryLots: 0, badDateLots: 0, badDateKg: 0, badDateSample: '',
+    kg30: 0, kg60: 0, kg90: 0, kg180: 0,
+    soonest: null, soonestDays: null, soonestLot: null,
+    riskKg: 0, riskLots: 0, rate: ratePerMonth || 0, hasRate: !!(ratePerMonth > 0)
+  };
+  if (!lots.length) return out;
+  var dated = [];
+  for (i = 0; i < lots.length; i++) {
+    if (lots[i].exp == null) {
+      out.undated++; out.noExpiryLots++; out.noExpiryKg += lots[i].qty;
+      // A cell with something unreadable in it ("03/15//2028", "Not Found") is a data
+      // error, not a missing entry — worth telling apart, because one needs a typo
+      // fixed and the other needs a date entered. Never guessed at: inventing an
+      // expiry date is the one failure mode this whole feature cannot afford.
+      if (lots[i].expRaw) {
+        out.badDateLots++; out.badDateKg += lots[i].qty;
+        if (!out.badDateSample) out.badDateSample = lots[i].expRaw;
+      }
+    }
+    else dated.push(lots[i]);
+  }
+  out.dated = dated.length;
+  dated.sort(function(a, b){ return a.exp - b.exp; });
+  var cum = 0;
+  for (i = 0; i < dated.length; i++) {
+    var L = dated[i];
+    if (L.days < 0) { out.expiredKg += L.qty; out.expiredLots++; }
+    else {
+      if (L.days <= 30)  out.kg30  += L.qty;
+      if (L.days <= 60)  out.kg60  += L.qty;
+      if (L.days <= 90)  out.kg90  += L.qty;
+      if (L.days <= 180) out.kg180 += L.qty;
+      if (out.soonest === null) { out.soonest = L.exp; out.soonestDays = L.days; out.soonestLot = L; }
+      // FEFO walk over unexpired lots only — expired stock is already spoken for.
+      cum += L.qty;
+      var consumable = (ratePerMonth > 0) ? (ratePerMonth * (L.days / 30.44)) : 0;
+      var over = cum - consumable;
+      if (over > 0) { out.riskKg += Math.min(L.qty, over); out.riskLots++; }
+    }
+  }
+  // Nothing unexpired but something expired: report the expired date as the soonest
+  // so the row still carries a date instead of reading as untracked.
+  if (out.soonest === null && out.expiredLots > 0) {
+    out.soonest = dated[0].exp; out.soonestDays = dated[0].days; out.soonestLot = dated[0];
+  }
+  return out;
+}
+// ── FEFO review: lots that get walked past ────────────────────────────────
+// The pick sheet records which T# was actually pulled; inventory carries each lot's
+// expiry, receiving date and current stock. A lot's balance at any past date
+// reconstructs as (current stock + every pick after that date), so for each pick we
+// can ask whether a sibling lot of the same part existed with an EARLIER expiry,
+// already received, still in date, and still holding stock. If so, FEFO was missed.
+//
+// Two exclusions keep this honest rather than noisy:
+//   - a sibling already past its date at pick time is NOT a miss. You cannot use
+//     expired material, so skipping it was correct.
+//   - sub-kilo remnants are ignored; nobody picks 0.1 kg of dust.
+//
+// The reviewable unit is the LOT, not the pick: the same drum gets walked past over
+// and over, so 6,335 pick-level misses collapse to a few hundred stranded lots.
+// Reporting every one of those is still useless — the list is dominated by
+// high-turnover aminos (one L-Citrulline lot is skipped 250 times and will be
+// consumed 400 days before it expires). The review list therefore intersects
+// "gets skipped" with "actually at risk": expired or expiring inside
+// FEFO_REVIEW_HORIZON_DAYS, and at least FEFO_REVIEW_MIN_KG. That is ~39 lots
+// instead of 757, and every row is worth acting on.
+//
+// Known limits, stated because they bound what this can claim:
+//   - only ~52% of picked T#s are still in the inventory feed (depleted lots get
+//     archived upstream), so this UNDER-reports; it cannot invent misses.
+//   - no write-off/adjustment data, so a scrapped lot looks like it was available.
+//   - legitimate overrides exist (allergen segregation, customer-specific lots,
+//     holds). Hence "review", never "violation".
+var FEFO_MIN_KG = 1;                 // a sibling must have held at least this much to count
+var FEFO_REVIEW_MIN_KG = 25;         // review list floor — keeps flavour dust out
+var FEFO_REVIEW_HORIZON_DAYS = 90;   // expired, or expiring inside this window
+var FEFO_EVENT_CAP = 25;             // per-lot evidence rows kept for the drill-down
+var _fefoOpenLot = null;             // T# whose skip detail is expanded, or null
+var _expiryIssuesOpen = false;       // the unreadable/missing-date list under the coverage line
+// Which section of an expanded material is showing. Sticky across materials on
+// purpose: auditing lots means opening five rows in a row and wanting Lots each time.
+var matInlineTab = 'usage';          // 'usage' | 'customers' | 'parts' | 'lots'
+var _fefoCache = null, _fefoCacheKey = '';
+// Pick-sheet dates are Google Form timestamps ("1/5/2026 14:32:05"); the time part
+// has to come off before parsing or every row is rejected.
+function _fefoPickDate(v) {
+  var s = (v == null ? '' : String(v)).trim();
+  if (!s) return null;
+  return parseInvDate(s.split(' ')[0]);
+}
+function computeFefoMisses() {
+  var rows = pickRows || [];
+  var key = rows.length + ':' + Object.keys(inventoryLotIndex || {}).length;
+  if (_fefoCache && _fefoCacheKey === key) return _fefoCache;
+
+  var idx = inventoryLotIndex || {}, byPart = {}, k, i, j;
+  // part -> its lots, and lot -> its picks (ascending, with suffix sums so a
+  // balance-at-date lookup is a binary search instead of a rescan).
+  for (k in idx) { if (!idx.hasOwnProperty(k)) continue;
+    var pt = idx[k].part; if (!pt) continue;
+    if (!byPart[pt]) byPart[pt] = [];
+    byPart[pt].push(k);
+  }
+  var picksByLot = {};
+  for (i = 0; i < rows.length; i++) {
+    var d = _fefoPickDate(rows[i].date);
+    if (!d) continue;
+    var t = d.getTime(), slots = rows[i].slots || [];
+    for (j = 0; j < slots.length; j++) {
+      var tn = normT(slots[j].t);
+      if (!tn || !idx[tn]) continue;
+      if (!picksByLot[tn]) picksByLot[tn] = [];
+      picksByLot[tn].push({ t: t, qty: slots[j].qty || 0, orderLot: rows[i].orderLot });
+    }
+  }
+  for (k in picksByLot) { if (!picksByLot.hasOwnProperty(k)) continue;
+    var arr = picksByLot[k];
+    arr.sort(function(a, b){ return a.t - b.t; });
+    var suf = new Array(arr.length + 1); suf[arr.length] = 0;
+    for (i = arr.length - 1; i >= 0; i--) suf[i] = suf[i+1] + arr[i].qty;
+    arr.suffix = suf;
+  }
+  function balanceAt(lotNo, t) {
+    var rec = idx[lotNo], arr = picksByLot[lotNo];
+    var base = rec ? rec.qty : 0;
+    if (!arr || !arr.length) return base;
+    var lo = 0, hi = arr.length;               // first pick strictly after t
+    while (lo < hi) { var mid = (lo + hi) >> 1; if (arr[mid].t > t) hi = mid; else lo = mid + 1; }
+    return base + arr.suffix[lo];
+  }
+  var strand = {}, events = 0;
+  for (k in picksByLot) { if (!picksByLot.hasOwnProperty(k)) continue;
+    var used = idx[k];
+    if (!used || used.exp == null || !used.part) continue;
+    var siblings = byPart[used.part] || [];
+    var mine = picksByLot[k];
+    for (i = 0; i < mine.length; i++) {
+      var when = mine[i].t, hit = false;
+      for (j = 0; j < siblings.length; j++) {
+        var sn = siblings[j];
+        if (sn === k) continue;
+        var sib = idx[sn];
+        if (!sib || sib.exp == null) continue;
+        if (sib.exp >= used.exp) continue;            // not earlier-expiring
+        if (sib.exp < when) continue;                 // already expired then — skipping was right
+        var rd = parseInvDate(sib.received);
+        if (rd && rd.getTime() > when) continue;      // not received yet
+        if (balanceAt(sn, when) < FEFO_MIN_KG) continue;
+        hit = true;
+        if (!strand[sn]) strand[sn] = { skips: 0, last: null, alts: {}, events: [] };
+        strand[sn].skips++;
+        strand[sn].alts[k] = true;
+        // The evidence behind the count: what was pulled instead, on what
+        // production lot, and how much of this lot was sitting there at the time.
+        // Without it "skipped 35x" is an accusation with nothing to check.
+        strand[sn].events.push({
+          when: when, usedLot: k, usedExp: used.exp,
+          orderLot: mine[i].orderLot || '', qty: mine[i].qty || 0,
+          hadKg: balanceAt(sn, when)
+        });
+        if (strand[sn].last == null || when > strand[sn].last) strand[sn].last = when;
+      }
+      if (hit) events++;
+    }
+  }
+  // Attach today's position from the in-stock lot rows, which carry location and
+  // supplier; a stranded lot with nothing left needs no review.
+  var live = {};
+  for (k in inventoryByPart) { if (!inventoryByPart.hasOwnProperty(k)) continue;
+    var lr = inventoryByPart[k].lotRows || [];
+    for (i = 0; i < lr.length; i++) live[(lr[i].lot || '').toUpperCase()] = { row: lr[i], material: inventoryByPart[k].material, part: k };
+  }
+  var today = _expiryToday(), all = [], byPartReview = {};
+  for (k in strand) { if (!strand[k].skips) continue;
+    var L = live[k];
+    if (!L || L.row.qty < FEFO_MIN_KG) continue;     // used up since — nothing to address
+    var exp = L.row.exp;
+    var days = exp == null ? null : Math.round((exp - today) / _EXPIRY_MS_PER_DAY);
+    var altN = 0, ak; for (ak in strand[k].alts) if (strand[k].alts.hasOwnProperty(ak)) altN++;
+    // Newest first — the recent skips are the ones still worth asking about.
+    var evs = (strand[k].events || []).slice().sort(function(a, b){ return b.when - a.when; });
+    var rec2 = {
+      lot: L.row.lot, part: L.part, material: L.material || '', qty: L.row.qty,
+      exp: exp, days: days, loc: L.row.loc, supplier: L.row.supplier, batch: L.row.batch,
+      skips: strand[k].skips, lastSkip: strand[k].last, altLots: altN,
+      events: evs.slice(0, FEFO_EVENT_CAP), eventsTotal: evs.length,
+      received: L.row.received,
+      review: (days != null && days <= FEFO_REVIEW_HORIZON_DAYS && L.row.qty >= FEFO_REVIEW_MIN_KG)
+    };
+    all.push(rec2);
+    if (rec2.review) { if (!byPartReview[L.part]) byPartReview[L.part] = []; byPartReview[L.part].push(rec2); }
+  }
+  // Expired first (money already gone), then soonest, then biggest.
+  all.sort(function(a, b){
+    if (a.review !== b.review) return a.review ? -1 : 1;
+    if (a.days != null && b.days != null && a.days !== b.days) return a.days - b.days;
+    return b.qty - a.qty;
+  });
+  var review = all.filter(function(r){ return r.review; });
+  _fefoCacheKey = key;
+  _fefoCache = {
+    events: events, all: all, review: review, byPartReview: byPartReview,
+    reviewKg: review.reduce(function(t, r){ return t + r.qty; }, 0),
+    expiredKg: review.reduce(function(t, r){ return t + (r.days < 0 ? r.qty : 0); }, 0),
+    byLot: (function(){ var m = {}, z; for (z = 0; z < all.length; z++) m[(all[z].lot || '').toUpperCase()] = all[z]; return m; })()
+  };
+  return _fefoCache;
+}
+// Does this material hold any lot on the review list? Drives the FEFO segment.
+function matHasFefoReview(m) {
+  var f = computeFefoMisses(), parts = (m && (m.stockParts || m.partNums)) || [], i;
+  for (i = 0; i < parts.length; i++) if (f.byPartReview[parts[i]]) return true;
+  return false;
+}
 // Sum forthcoming demand (KG) across a list of part #s. Returns 0 when none have
 // demand — unlike stock, a missing entry genuinely means "nothing on the books".
 function demandForParts(parts) {
@@ -1731,8 +2121,9 @@ function parseDemand(text) {
 }
 
 function fetchDemandCSV(fresh) {
-  // No cachebust — same rationale as fetchInventoryCSV: hit Google's CDN cache.
-  return fetch(CSV_DEMAND, NO_CACHE).then(function(r){
+  // No cachebust on first load, forced origin read on refresh — same rationale
+  // as fetchInventoryCSV.
+  return fetch(fresh ? bustUrl(CSV_DEMAND, true) : CSV_DEMAND, NO_CACHE).then(function(r){
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.text();
   }).then(function(text){
@@ -1741,9 +2132,12 @@ function fetchDemandCSV(fresh) {
   }).catch(function(){ return ''; });
 }
 
-function fetchDemandIfNeeded() {
-  if (demandLoaded) return;
-  fetchDemandCSV().then(function(t){
+function fetchDemandIfNeeded(force) {
+  if (demandLoaded && !force) return;
+  if (_demandFetching) return;
+  _demandFetching = true;
+  fetchDemandCSV(!!force).then(function(t){
+    _demandFetching = false;
     var parsed = parseDemand(t);
     if (Object.keys(parsed).length > 0) {
       demandByPart = parsed;
@@ -1751,21 +2145,31 @@ function fetchDemandIfNeeded() {
       try { sessionStorage.setItem(DEMAND_CACHE_KEY, JSON.stringify({ byPart: parsed, ts: Date.now() })); } catch(e) {}
       if (mainSection === 'procurement' && procView === 'materials') renderMaterials();
     }
+  }).catch(function(e){
+    _demandFetching = false;
+    console.warn('Demand refresh failed: ' + (e && e.message ? e.message : e));
   });
 }
 
 // Hydrate inventory/demand from sessionStorage (set by prior fetches this session)
 // so the Stock-position columns paint instantly instead of re-waiting on Google.
-// In-memory loaded flags then short-circuit the network fetch for the rest of the
-// session — matching how the data already loads at most once per page load.
+//
+// The loaded flags this sets would also suppress the load-time fetch, which is why
+// reloading the page used to be no way out of a stale cell: within the 10-minute TTL
+// a reload repainted the same snapshot without ever asking Google. It records
+// _stockHydratedFromCache instead, so loadDashboard can paint instantly AND then
+// verify against the origin.
+var _stockHydratedFromCache = false;
 function _loadStockCaches() {
   try {
     var ri = sessionStorage.getItem(INVENTORY_CACHE_KEY);
-    if (ri) { var ci = JSON.parse(ri); if (ci && ci.byPart && (Date.now() - (ci.ts || 0)) < STOCK_CACHE_TTL) { inventoryByPart = ci.byPart; inventoryLoaded = true; } }
+    // Same size test on the way in: a cache is only as trustworthy as the fetch that
+    // wrote it, and a gutted payload must not be able to survive a reload.
+    if (ri) { var ci = JSON.parse(ri); if (ci && ci.byPart && (Date.now() - (ci.ts || 0)) < STOCK_CACHE_TTL && _inventoryLooksComplete(ci.byPart, null)) { inventoryByPart = ci.byPart; inventoryLotIndex = ci.lotIndex || {}; inventoryLoaded = true; _stockHydratedFromCache = true; } }
   } catch(e) {}
   try {
     var rd = sessionStorage.getItem(DEMAND_CACHE_KEY);
-    if (rd) { var cd = JSON.parse(rd); if (cd && cd.byPart && (Date.now() - (cd.ts || 0)) < STOCK_CACHE_TTL) { demandByPart = cd.byPart; demandLoaded = true; } }
+    if (rd) { var cd = JSON.parse(rd); if (cd && cd.byPart && (Date.now() - (cd.ts || 0)) < STOCK_CACHE_TTL) { demandByPart = cd.byPart; demandLoaded = true; _stockHydratedFromCache = true; } }
   } catch(e) {}
 }
 
@@ -2163,22 +2567,87 @@ function parseAmt(s) {
   return { value: Math.round(n), unit: (m[3] || '').trim() };
 }
 
-function fetchLotIndexIfNeeded() {
-  if (lotIndexLoaded) return;
+function fetchLotIndexIfNeeded(force) {
+  if (lotIndexLoaded && !force) return;
+  if (_lotIdxFetching) return;
   var urls = Object.keys(CSV_LOT_INDEX_BY_YEAR).map(function(y){ return CSV_LOT_INDEX_BY_YEAR[y]; });
   if (!urls.length) { lotIndexLoaded = true; return; }
-  Promise.all(urls.map(function(u){ return fetchCSVSimple(u); })).then(function(texts){
+  _lotIdxFetching = true;
+  Promise.all(urls.map(function(u){ return fetchCSVSimple(u, !!force); })).then(function(texts){
+    _lotIdxFetching = false;
     var merged = {};
     texts.forEach(function(t){
       var partial = parseLotIndex(t);
       Object.keys(partial).forEach(function(k){ merged[k] = partial[k]; });
     });
-    lotIndex = merged;
-    lotIndexLoaded = true;
-    // If the user is already sitting on the materials view, re-render so any
-    // previously-"Unknown" lots pick up their brand/product from the index.
-    if (mainSection === 'procurement' && procView === 'materials') renderMaterials();
+    // Only replace on a non-empty result. fetchCSVSimple swallows failures into ''
+    // so a bad publish snapshot arrives as an empty parse, and this assignment used
+    // to be unconditional — safe when it ran once per page load, a way to blank
+    // every lot's brand now that a timer calls it repeatedly.
+    if (Object.keys(merged).length > 0) {
+      lotIndex = merged;
+      lotIndexLoaded = true;
+      // If the user is already sitting on the materials view, re-render so any
+      // previously-"Unknown" lots pick up their brand/product from the index.
+      if (mainSection === 'procurement' && procView === 'materials') renderMaterials();
+      // Recall and Blend name their lots out of this index too (buildRecallResult /
+      // buildBlendResult). Harmless to omit when this only ran once at load; now that
+      // it re-reads on a timer, a landed refresh has to repaint them as well.
+      else if (mainSection === 'quality') render();
+    } else if (!lotIndexLoaded) {
+      console.warn('Lot index fetch returned no rows; keeping it unloaded so the next refresh retries.');
+    }
+  }).catch(function(e){
+    _lotIdxFetching = false;
+    console.warn('Lot index refresh failed: ' + (e && e.message ? e.message : e));
   });
+}
+
+// Re-read the four slow-moving feeds behind Procurement and Quality: materials /
+// pick sheet, raw-material inventory, forthcoming demand, and the lot index.
+//
+// These used to load at most once per page load. Each fetcher latched on its own
+// "loaded" flag, nothing ever cleared those flags, and neither the Refresh button
+// nor either auto-refresh timer called them — so a long-lived tab could sit on an
+// expiry date the sheet had corrected days earlier, and pressing Refresh (which
+// only re-pulls the production CSVs) did nothing to shift it.
+//
+// force=true bypasses the loaded flags AND cachebusts the request, so this is a
+// genuine origin read rather than a re-hydration of whatever is already held.
+// Each fetcher keeps its existing size/sanity guard, so a bad publish snapshot is
+// still rejected in favour of the data on screen.
+var _stockRefreshAt = 0;                          // last time we *attempted* a re-read
+var STOCK_REFRESH_MIN_INTERVAL = 5 * 60 * 1000;   // matches the auto-refresh tick
+function refreshStockFeeds() {
+  // Stamped on attempt rather than success: a failed attempt should wait for the
+  // next tick like any other, not spin on every render.
+  _stockRefreshAt = Date.now();
+  fetchMaterialsIfNeeded(true);
+  fetchLotIndexIfNeeded(true);
+  // Inventory and demand are the admin-only Procurement feeds; viewers never see
+  // the columns they populate, matching the role gate on the initial load.
+  if (userRole === 'admin') {
+    fetchInventoryIfNeeded(true);
+    fetchDemandIfNeeded(true);
+  }
+}
+
+// Called when Materials or Quality renders. The 5-minute timer only helps someone
+// already sitting on the section; without this, arriving from Production after an
+// hour elsewhere shows whatever was last fetched until the next tick — which is the
+// same "looks current, isn't" failure in miniature. Rate-limited to one attempt per
+// STOCK_REFRESH_MIN_INTERVAL so ordinary re-renders (sorting, expanding a row) are
+// free, and the in-flight guards absorb the rest.
+function refreshStockFeedsIfStale() {
+  if (Date.now() - _stockRefreshAt < STOCK_REFRESH_MIN_INTERVAL) return;
+  refreshStockFeeds();
+}
+
+// True for the sections whose numbers come from those feeds. Used to keep the
+// periodic re-read off the backs of users sitting on Production or Sales, where
+// none of it is on screen.
+function _onStockSection() {
+  return mainSection === 'procurement' || mainSection === 'quality';
 }
 
 function parseMaterials(text) {
@@ -2480,10 +2949,19 @@ function loadDashboard() {
     // highly variable latency — 1-20s for these sheets).
     fetchMaterialsIfNeeded();
     fetchLotIndexIfNeeded();
+    // These count as a re-read for staleness purposes, so the first visit to
+    // Materials doesn't immediately fire a second, forced round of the same fetches.
+    _stockRefreshAt = Date.now();
     // Warm the Procurement data (admin-only tab) during initial load so the slow
     // inventory fetch overlaps with login + the Production view, and Materials is
     // usually ready by the time the user navigates there.
     if (userRole === 'admin') { fetchOpenOrdersIfNeeded(false); fetchInventoryIfNeeded(); fetchDemandIfNeeded(); fetchLogisticsIfNeeded(false); fetchInboundIfNeeded(false); }
+    // A genuine cold start is covered by the calls above, which use the stable URL
+    // and land in ~0.25s off Google's CDN. But if _loadStockCaches painted from
+    // sessionStorage, those calls just returned early — so force one real origin
+    // read behind the instant paint. Reloading the page is the first thing anyone
+    // does when a number looks wrong; it has to actually check.
+    if (_stockHydratedFromCache) refreshStockFeeds();
     // Safety net: if daily view looks empty after load, re-fetch once after a short delay
     // Guards against Google Sheets CDN serving a stale response on first hit.
     // fresh=true bypasses the bucket so this retry can't reuse the same stale
@@ -2571,6 +3049,9 @@ function hardRefresh() {
   var btn = document.querySelector('#app-bar-right button');
   if (btn) { btn.style.opacity = '.5'; btn.querySelector('span').textContent = 'Refreshing…'; }
   _refreshInFlight = true; updateFreshnessStamp();
+  // The button says "Refresh", so it refreshes everything on screen — not just the
+  // production CSVs. These land independently and re-render themselves when they do.
+  refreshStockFeeds();
   fetchData(true).then(function(res){
     _refreshInFlight = false;
     if (applyFreshData(res)) { lastRefreshTime = Date.now(); updateFreshnessStamp(); render(); _maybeRetryFromOrphans(false); }
@@ -2700,6 +3181,10 @@ function startRefreshTimers() {
     // pick up new rows the operators just published.
     if(topView==='summary'&&subView==='performance'||topView==='detail') refreshAndRender(false, false, true);
     if(userRole==='admin') { fetchOpenOrdersIfNeeded(false); if(mainSection==='logistics') _logiFetchActive(); }
+    // Materials / inventory / demand / lot index, but only while the user is on a
+    // section that displays them — a cold inventory read is expensive and nobody on
+    // Production is looking at it.
+    if(_onStockSection()) refreshStockFeeds();
   }, 5*60*1000);
   todayTimer = setInterval(function(){
     checkDateRollover();
@@ -2714,7 +3199,12 @@ function startRefreshTimers() {
       }
       // Returning to the tab after being away — force a fresh origin read
       // so we don't show a stale bucketed response from before we left.
-      if(Date.now()-lastRefreshTime > 45000) refreshAndRender(true, false, true);
+      if(Date.now()-lastRefreshTime > 45000) {
+        refreshAndRender(true, false, true);
+        // Same deal for the stock feeds: coming back to the tab should not show
+        // numbers from whenever you last left it.
+        if(_onStockSection()) refreshStockFeeds();
+      }
     }
   });
 }
@@ -3151,6 +3641,10 @@ function setQualitySubTab(v) {
 
 // Quality view dispatcher — renders the active sub-tab's content into #content.
 function renderQuality() {
+  // Recall and Blend both trace against the pick sheet and the lot index, so they
+  // need the same staleness check as Materials — a recall trace run against a
+  // days-old pick sheet is worse than no trace at all.
+  refreshStockFeedsIfStale();
   if (qualitySubTab === 'blend') { renderBlend(); return; }
   if (qualitySubTab === 'recall') { renderRecall(); return; }
   renderRecall(); // default/fallback
@@ -3743,13 +4237,36 @@ function _logiCopy(text, btn) {
 // dimSet (optional) marks part #s belonging to the SKU group but with no usage in
 // the selected window — rendered muted so the subline can show the full group roster
 // without implying every part was consumed recently.
+// Part-# chips laid out in a balanced grid rather than left to wrap by width.
+// Width-wrapping gave WPC's six parts a lopsided 4/2 because 20-1194 is wider than
+// 20-092; a reader scanning a roster wants even rows. Rows are sized first from how
+// many chips physically fit (PART_CHIP_CAP), then the column count is derived from
+// the row count, so the last row is never left with a single orphan:
+//   6 parts -> 2 rows -> 3 cols -> 3/3      (was 4/2)
+//   5        -> 2      -> 3      -> 3/2
+//   4        -> 1      -> 4      -> 4
+//   9        -> 3      -> 3      -> 3/3/3
+// max-content columns keep each chip its natural width and stay left-aligned.
+var PART_CHIP_CAP = 4;   // chips that fit on one line in the 250px name-cell roster
+function _partNumsGridStyle(n) {
+  if (n < 2) return '';
+  var rows = Math.ceil(n / PART_CHIP_CAP);
+  var cols = Math.ceil(n / rows);
+  return 'display:inline-grid;grid-template-columns:repeat(' + cols + ',max-content);gap:1px 10px;';
+}
 function _partNumsHTML(partNums, dimSet) {
-  return partNums.map(function(p) {
+  // A single chip needs no grid, and the grid replaces the interpunct separators —
+  // aligned columns already do the visual separating.
+  var grid = _partNumsGridStyle(partNums.length);
+  var joined = grid ? '' : '<span style="color:#4a4d4a;"> \xb7 </span>';
+  var inner = partNums.map(function(p) {
     var dim = dimSet && dimSet[p];
-    return '<span style="color:' + (dim ? '#6f6e6a' : '#a8c7e8') + ';user-select:text;-webkit-user-select:text;"'
+    var chip = '<span style="color:' + (dim ? '#6f6e6a' : '#a8c7e8') + ';user-select:text;-webkit-user-select:text;"'
       + (dim ? ' title="No usage in the selected window"' : '') + '>' + esc(p) + '</span>'
       + '<button onclick="event.stopPropagation();_logiCopy(' + jsStr(p) + ',this)" title="Copy part #" style="margin-left:3px;background:transparent;border:none;cursor:pointer;color:#5f5e5a;padding:0;vertical-align:-1px;" onmouseover="this.style.color=\'#85B7EB\'" onmouseout="this.style.color=\'#5f5e5a\'"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M3 11V3a1 1 0 0 1 1-1h7"/></svg></button>';
-  }).join('<span style="color:#4a4d4a;"> \xb7 </span>');
+    return grid ? '<span style="white-space:nowrap;">' + chip + '</span>' : chip;
+  }).join(joined);
+  return grid ? '<span style="' + grid + '">' + inner + '</span>' : inner;
 }
 // Build a carrier tracking link for a reference, or null if the carrier has no
 // entry in CARRIER_TRACK_URL. Keys matched case-insensitively; trailing "."
@@ -4574,7 +5091,18 @@ function prepData() {
   return {now:now,lots:lots,completeLots:completeLots,partialLots:partialLots,totalUnits:totalUnits,totalProj:totalProj,uniqueProds:uniqueProds,uniqueCusts:uniqueCusts,totalLots:totalLots,devs:devs,avgDev:avgDev,highDevCount:highDevCount,uniqDays:uniqDays,avgPerDay:avgPerDay,total25:total25,total25lots:total25lots,comp25pct:comp25pct,avg25perDay:avg25perDay,avgDev25:avgDev25,custs25:custs25,lineEntries:lineEntries,lineAvg:lineAvg,comp25:comp25};
 }
 
-function animateGauges(gaugeData, todayTotal, totalGoal, barColor) {
+// Wording for the day-total readout at the right edge of the segmented bar.
+// A finished day (any past day, or today after 4pm ET) can no longer make up a
+// gap — its miss is final, so it reads as a shortfall, not as work "to go".
+function bannerRemainText(remaining, dayComplete, goalNoun) {
+  if(remaining<=0) return {text:'+'+Math.abs(remaining).toLocaleString()+' over target', color:'#9FE1CB'};
+  return {
+    text: remaining.toLocaleString()+(dayComplete?' short of '+goalNoun:' to go'),
+    color: dayComplete?'#EF9F27':'#888780'
+  };
+}
+
+function animateGauges(gaugeData, todayTotal, totalGoal, barColor, dayComplete, goalNoun) {
   var DURATION = 1200, start = null;
   function easeOut(t){ return 1-Math.pow(1-t,3); }
   function drawDial(idx, color, track, frac) {
@@ -4621,8 +5149,8 @@ function animateGauges(gaugeData, todayTotal, totalGoal, barColor) {
       if(rem){
         var remaining=Math.round(totalGoal-todayTotal*e);
         rem.style.fontSize='11px';rem.style.fontWeight='500';
-        if(remaining<=0){rem.style.color='#9FE1CB';rem.textContent='+'+(Math.abs(remaining)).toLocaleString()+' over target';}
-        else{rem.style.color='#888780';rem.textContent=remaining.toLocaleString()+' to go';}
+        var rt=bannerRemainText(remaining, dayComplete, goalNoun);
+        rem.style.color=rt.color;rem.textContent=rt.text;
       }
       // Legend labels sit in a normal flex row below the bar, so they can
       // never overlap each other regardless of where the segments are. We
@@ -4656,7 +5184,7 @@ function animateGauges(gaugeData, todayTotal, totalGoal, barColor) {
   requestAnimationFrame(draw);
 }
 
-function applyHitStates(gaugeData, todayTotal, totalGoal, statusLabel, statusColor) {
+function applyHitStates(gaugeData, todayTotal, totalGoal, statusLabel, statusColor, dayComplete, goalNoun) {
   gaugeData.forEach(function(g){
     var frac = g.avg ? (g.units/g.avg) : 0, hit = frac >= TARGET_HIT_THRESHOLD;
     var card = document.getElementById('gcard_'+g.idx);
@@ -4672,7 +5200,13 @@ function applyHitStates(gaugeData, todayTotal, totalGoal, statusLabel, statusCol
     if(check) check.style.display = hit ? 'flex' : 'none';
     if(remain){
       if(hit){ remain.innerHTML='<svg width="10" height="10" viewBox="0 0 11 11" fill="none" style="flex-shrink:0"><polyline points="1.5,5.5 4.5,8.5 9.5,2.5" stroke="#1D9E75" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span style="color:#1D9E75;">Target reached</span>'; }
-      else if(g.avg){ var left=Math.max(0,Math.round(g.avg-g.units)); remain.innerHTML='<svg width="10" height="10" viewBox="0 0 10 10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="none" stroke="#EF9F27" stroke-width="1.2"/><line x1="5" y1="2.8" x2="5" y2="5.5" stroke="#EF9F27" stroke-width="1.2" stroke-linecap="round"/><circle cx="5" cy="7.2" r="0.7" fill="#EF9F27"/></svg><span style="color:#EF9F27;">'+left.toLocaleString()+' units remaining</span>'; }
+      else if(g.avg){
+        var left=Math.max(0,Math.round(g.avg-g.units));
+        // Same distinction as the banner: a finished day missed its number, it
+        // doesn't still have units left to run.
+        var gapLbl=left.toLocaleString()+' units '+(dayComplete?'short of '+(g.isTarget?'target':'avg'):'remaining');
+        remain.innerHTML='<svg width="10" height="10" viewBox="0 0 10 10" style="flex-shrink:0"><circle cx="5" cy="5" r="4" fill="none" stroke="#EF9F27" stroke-width="1.2"/><line x1="5" y1="2.8" x2="5" y2="5.5" stroke="#EF9F27" stroke-width="1.2" stroke-linecap="round"/><circle cx="5" cy="7.2" r="0.7" fill="#EF9F27"/></svg><span style="color:#EF9F27;">'+gapLbl+'</span>';
+      }
       else remain.innerHTML='';
     }
   });
@@ -4693,7 +5227,9 @@ function applyHitStates(gaugeData, todayTotal, totalGoal, statusLabel, statusCol
   var rem=document.getElementById('banner-remaining');
   if(allHit){
     ['banner-seg1','banner-seg2','banner-seg4'].forEach(function(id){ var el=document.getElementById(id); if(el) el.style.opacity='1'; });
-    if(rem){ rem.style.color='#9FE1CB'; rem.textContent='+' + (todayTotal-totalGoal).toLocaleString()+' over target'; }
+    // allHit tolerates 0.99, so a "hit" day can still sit a few units under —
+    // route through the shared helper rather than printing "+-70 over target".
+    if(rem){ var hrt=bannerRemainText(totalGoal-todayTotal, dayComplete, goalNoun); rem.style.color=hrt.color; rem.textContent=hrt.text; }
     ['banner-leg-line#1','banner-leg-line#2','banner-leg-line#4'].forEach(function(id){ var el=document.getElementById(id); if(el) el.style.opacity='1'; });
   }
   var bs=document.getElementById('banner-bullseye'); if(bs) bs.style.display=allHit?'inline':'none';
@@ -4806,6 +5342,7 @@ function renderToday() {
   var totalGoal=ALL_LINES.reduce(function(s,line){return s+lineGoal(line).value;},0);
   var allLinesHaveTarget=ALL_LINES.every(function(line){ var g=lineGoal(line); return g.isTarget; });
   var bannerGoalLabel=allLinesHaveTarget?'% of Target':'% of Avg';
+  var bannerGoalNoun=allLinesHaveTarget?'target':'avg';
   var todayPct=totalGoal?Math.round((todayTotal/totalGoal)*100):0;
   var statusLabel=isLive&&!dayComplete?'Day in progress':(todayPct>100?'Target exceeded':todayPct>=TARGET_HIT_THRESHOLD*100?'Target met':'Day complete');
   var statusColor=isLive&&!dayComplete?'#888780':(todayPct>=100?'#1D9E75':'#EF9F27');
@@ -4923,7 +5460,7 @@ function renderToday() {
       +'<div id="banner-seg1" style="flex-shrink:0;height:100%;width:0%;background:'+LINE_COLOR['line#1']+';transition:width 1.2s cubic-bezier(.4,0,.2,1);"></div>'
       +'<div id="banner-seg2" style="flex-shrink:0;height:100%;width:0%;background:'+LINE_COLOR['line#2']+';transition:width 1.2s cubic-bezier(.4,0,.2,1);"></div>'
       +'<div id="banner-seg4" style="flex-shrink:0;height:100%;width:0%;background:'+LINE_COLOR['line#4']+';transition:width 1.2s cubic-bezier(.4,0,.2,1);"></div>'
-      +'<div id="banner-remaining" style="position:absolute;top:50%;right:10px;transform:translateY(-50%);font-size:11px;font-weight:500;color:#888780;font-family:system-ui;white-space:nowrap;">'+totalGoal.toLocaleString()+' to go</div>'
+      +'<div id="banner-remaining" style="position:absolute;top:50%;right:10px;transform:translateY(-50%);font-size:11px;font-weight:500;color:#888780;font-family:system-ui;white-space:nowrap;">'+esc(bannerRemainText(totalGoal, dayComplete, bannerGoalNoun).text)+'</div>'
     +'</div>'
     +'<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;min-height:18px;">'
       +'<div id="banner-leg-line#1" style="display:none;font-size:10px;font-weight:500;color:'+LINE_COLOR['line#1']+';font-family:system-ui;white-space:nowrap;">Line #1 — 0</div>'
@@ -4939,8 +5476,8 @@ function renderToday() {
     +'</div>'
     +'<div id="dailyCompletedGrid">'+completedHTML+'</div></div></div></div>';
 
-  var gaugeData=ALL_LINES.map(function(line,i){ var k2=lk(line), goal=lineGoal(line); return {idx:i,line:line,color:LINE_COLOR[k2]||'#888780',track:LINE_TRACK[k2]||'#2c2c2a',units:todayByLine[line]||0,avg:goal.value,sfx:goal.lineDown?'% of Target (down)':goal.isTarget?'% of Target':'% of Avg',lineDown:goal.lineDown}; });
-  setTimeout(function(){ applyHitStates(gaugeData,todayTotal,totalGoal,statusLabel,statusColor); animateGauges(gaugeData,todayTotal,totalGoal,barColor); }, 0);
+  var gaugeData=ALL_LINES.map(function(line,i){ var k2=lk(line), goal=lineGoal(line); return {idx:i,line:line,color:LINE_COLOR[k2]||'#888780',track:LINE_TRACK[k2]||'#2c2c2a',units:todayByLine[line]||0,avg:goal.value,isTarget:goal.isTarget,sfx:goal.lineDown?'% of Target (down)':goal.isTarget?'% of Target':'% of Avg',lineDown:goal.lineDown}; });
+  setTimeout(function(){ applyHitStates(gaugeData,todayTotal,totalGoal,statusLabel,statusColor,dayComplete,bannerGoalNoun); animateGauges(gaugeData,todayTotal,totalGoal,barColor,dayComplete,bannerGoalNoun); }, 0);
 }
 
 // Builds the Daily "Completed today" 3-column (per-line) grid from a list of
@@ -5202,6 +5739,11 @@ function renderWeekly() {
   // Don't count today as a full elapsed day until after 4PM ET
   var daysElapsed=isLiveWeek?(day===0?wkDayCount:day===6?wkDayCount:todayComplete?Math.min(day,wkDayCount):Math.min(day-1,wkDayCount)):wkDayCount;
   var daysRemaining=isLiveWeek?Math.max(0,wkDayCount-daysElapsed):0;
+  // A week with no days left to run can't still be "on pace" or have units "to
+  // go" — its number is final. True for any past week, and for the live week
+  // once Friday 4PM ET passes (the same threshold the Daily tab treats as
+  // day-complete), which is also when onPace switches to its final-tally test.
+  var weekComplete=daysRemaining===0;
 
   // Last week same days elapsed — apples to apples
   var lastWkSameEnd=new Date(lastMon); lastWkSameEnd.setDate(lastMon.getDate()+daysElapsed-1); lastWkSameEnd.setHours(23,59,59,999);
@@ -5241,12 +5783,11 @@ function renderWeekly() {
   var vsTarget=weekUnits-weeklyTarget;
   var vsTargetPct=weeklyTarget?Math.round((vsTarget/weeklyTarget)*100):0;
   var statusLabel,statusBg,statusTxt;
-  if(isLiveWeek){
-    if(targetSource==='est'||targetSource==='avg'){
-      statusLabel=''; statusBg=''; statusTxt='';
-    } else {
-      statusLabel=onPace?'On pace':'Behind pace'; statusBg=onPace?'#085041':'#633806'; statusTxt=onPace?'#9FE1CB':'#FAC775';
-    }
+  if(isLiveWeek&&(targetSource==='est'||targetSource==='avg')){
+    // Nothing worth grading against a guessed target.
+    statusLabel=''; statusBg=''; statusTxt='';
+  } else if(!weekComplete){
+    statusLabel=onPace?'On pace':'Behind pace'; statusBg=onPace?'#085041':'#633806'; statusTxt=onPace?'#9FE1CB':'#FAC775';
   } else{ var finalPct=weeklyTarget?(weekUnits/weeklyTarget)*100:0; if(finalPct>100){statusLabel='Target exceeded';statusBg='#085041';statusTxt='#9FE1CB';}else if(finalPct>=TARGET_HIT_THRESHOLD*100){statusLabel='Target met';statusBg='#085041';statusTxt='#9FE1CB';}else{statusLabel='Target missed';statusBg='#791F1F';statusTxt='#F09595';} }
   // Build per-lot unit counts within this week's window only
   var weekLotUnits={};
@@ -5310,14 +5851,15 @@ function renderWeekly() {
     // ── Nav bar ──
     // ── Weekly banner (daily bar style) ──
     (function(){
-      var allHitWeek=!isLiveWeek&&weeklyTarget&&(weekUnits/weeklyTarget)>=TARGET_HIT_THRESHOLD;
+      var allHitWeek=weekComplete&&weeklyTarget&&(weekUnits/weeklyTarget)>=TARGET_HIT_THRESHOLD;
       var bannerBorder=allHitWeek?'2px solid #1D9E75':'0.5px solid #2c2c2a';
       var bannerShadow=allHitWeek?'0 0 10px 2px rgba(29,158,117,0.28),0 0 20px 4px rgba(29,158,117,0.10)':'none';
       var pctColor=allHitWeek?'#9FE1CB':onPace?'#9FE1CB':'#EF9F27';
       var statusColor=allHitWeek?'#9FE1CB':onPace?'#9FE1CB':'#EF9F27';
-      var remText=allHitWeek?'+'+(weekUnits-weeklyTarget).toLocaleString()+' over target'
-        :isLiveWeek&&weeklyTarget?Math.max(0,weeklyTarget-weekUnits).toLocaleString()+' to go'
-        :weeklyTarget?(weekUnits>=weeklyTarget?'+'+( weekUnits-weeklyTarget).toLocaleString()+' over target':Math.max(0,weeklyTarget-weekUnits).toLocaleString()+' to go'):'';
+      // Same shortfall/surplus wording as the Daily banner: a finished week
+      // missed its number, it doesn't still have units "to go".
+      var rem=weeklyTarget?bannerRemainText(weeklyTarget-weekUnits, weekComplete, 'target'):null;
+      var remText=rem?rem.text:'';
       // segment widths — scale against max of (total units, target) so bar never overflows
       var barScale=Math.max(weekUnits,weeklyTarget||1);
       var segs=ALL_LINES.map(function(line){
@@ -5368,7 +5910,7 @@ function renderWeekly() {
             var radius=i===0?'6px 0 0 6px':i===ALL_LINES.length-1?'0 6px 6px 0':'0';
             return '<div style="position:absolute;top:0;left:'+segLeft[i]+'%;height:100%;width:'+segs[i]+'%;background:'+color+';border-radius:'+radius+';"></div>';
           }).join('')
-          +'<div style="position:absolute;top:50%;right:10px;transform:translateY(-50%);font-size:11px;font-weight:500;color:'+(allHitWeek?'#9FE1CB':'#888780')+';font-family:system-ui;white-space:nowrap;">'+remText+'</div>'
+          +'<div style="position:absolute;top:50%;right:10px;transform:translateY(-50%);font-size:11px;font-weight:500;color:'+(rem?rem.color:'#888780')+';font-family:system-ui;white-space:nowrap;">'+remText+'</div>'
         +'</div>'
         // per-line labels under bar — flex row so labels can never overlap
         // when segments cluster at the start of a mostly-empty bar (e.g. early
@@ -8429,6 +8971,14 @@ function exportProcurement() {
 
 function isSoftgel(name) { return /softgel/i.test(name||''); }
 function matUnit(name) { return isSoftgel(name) ? 'softgels' : 'kg'; }
+// Column-safe unit for the dense Materials table. "softgels" is six characters longer
+// than "kg", and that table is table-layout:fixed with ~72px of content room per
+// numeric column — so the full word overflowed its cell and printed on top of the
+// neighbouring column ("153,400 softgels4,500 softgels"). "sg" occupies exactly the
+// same space as "kg", so every existing column width still holds. The full word stays
+// wherever there is room to spell it: the purple row badge, tooltips, the expanded
+// panel, and the export.
+function matUnitShort(name) { return isSoftgel(name) ? 'sg' : 'kg'; }
 
 // Largest-remainder apportionment: shares that sum to EXACTLY 100 at the given
 // decimal precision. Rounding each share independently can total 100.1% on a skewed
@@ -8556,6 +9106,82 @@ function selectMaterial(idx) {
   if (inlineRow) { inlineRow.style.display = ''; renderMatInline(m, idx); }
 }
 
+// Expiry thresholds. SOON is the horizon the Expiring segment and the amber
+// treatment use; RISK_MIN keeps sub-kilo remnants out of the risk figure (256 lot
+// rows hold under 1 kg, and they would otherwise dominate the list with dust).
+var EXPIRY_SOON_DAYS = 90;
+var EXPIRY_RISK_MIN_KG = 1;
+// A row is "expiring" if it has stock already past date, stock dated inside the
+// horizon, or FEFO says some won't be consumed in time. Undated stock never makes a
+// row expiring — absence of a date is not evidence of a problem, and saying
+// otherwise would flag half the warehouse.
+function matIsExpiring(m) {
+  var e = m && m.expiry;
+  if (!e) return false;
+  return e.expiredKg > 0 || e.kg90 > 0 || e.riskKg >= EXPIRY_RISK_MIN_KG;
+}
+// Expiry cell: soonest live date + how far out, with the exposure underneath.
+// Deliberately shows one date, not a summary of all of them — the expanded row
+// carries the full lot list. Colors match the Cover column's language (red now,
+// amber soon, muted fine) so the two read as one stock-position cluster.
+function renderExpiryCell(m, unit) {
+  var e = m && m.expiry;
+  // `unit` is the spelled-out word, used in the title tooltips below where length is
+  // free. The two visible sub-badges sit inside a 104px fixed column, so they use the
+  // abbreviation for the same reason the numeric columns do.
+  var unitS = matUnitShort(m && m.name);
+  var pad = 'text-align:center;padding:8px 10px;white-space:nowrap;';
+  // No lots at all: the material is tracked for usage but holds no stock.
+  if (!e || !e.lots.length) return '<td style="' + pad + 'color:#5f5e5a;font-size:12px;">—</td>';
+  // Stock on hand but not one lot carries a date: say so plainly. This is 40% of
+  // lot rows, so it gets its own state instead of masquerading as "fine".
+  if (!e.dated) {
+    var allBad = e.badDateLots > 0 && e.badDateLots === e.noExpiryLots;
+    var tip = e.noExpiryLots + ' lot' + (e.noExpiryLots===1?'':'s') + ' holding ' + Math.round(e.noExpiryKg).toLocaleString() + ' ' + unit
+      + (allBad
+          ? ' — the expiry value on the inventory sheet cannot be read (\u201c' + esc(e.badDateSample) + '\u201d). A typo, not a missing date.'
+          : ' — no expiry date recorded on the inventory sheet, so nothing can be projected.');
+    return '<td style="' + pad + '"><span title="' + tip + '"'
+      + ' style="font-size:11px;color:' + (allBad ? '#F09595' : '#888780') + ';border-bottom:1px dotted #5f5e5a;cursor:help;">'
+      + (allBad ? 'bad date' : 'no date') + '</span></td>';
+  }
+  var parts = [], line1;
+  var d = new Date(e.soonest);
+  var dateStr = (d.getMonth()+1) + '/' + d.getDate() + '/' + String(d.getFullYear()).slice(2);
+  var days = e.soonestDays;
+  var col = days < 0 ? '#F09595' : days <= 30 ? '#F09595' : days <= EXPIRY_SOON_DAYS ? '#FAC775' : '#888780';
+  var when = days < 0 ? ('expired ' + Math.abs(days) + 'd ago')
+           : days === 0 ? 'today'
+           : (days + 'd');
+  line1 = '<div style="font-size:12px;font-weight:' + (days <= EXPIRY_SOON_DAYS ? '500' : '400') + ';color:' + col + ';">'
+        + dateStr + ' <span style="font-size:10px;font-weight:400;opacity:.85;">' + when + '</span></div>';
+  // Second line, in priority order: expired stock, then FEFO risk, then coverage
+  // gap. Only one shows — the row is 12 columns wide and a stack of badges here
+  // would out-shout the numbers it is meant to annotate.
+  var sub = '';
+  if (e.expiredKg > 0) {
+    sub = '<span title="' + e.expiredLots + ' lot' + (e.expiredLots===1?'':'s') + ' past date, still holding stock. Not a projection — these dates have passed."'
+      + ' style="font-size:9px;font-weight:500;padding:1px 5px;border-radius:4px;background:#791F1F;color:#F09595;cursor:help;">'
+      + Math.round(e.expiredKg).toLocaleString() + ' ' + unitS + ' expired</span>';
+  } else if (e.riskKg >= EXPIRY_RISK_MIN_KG) {
+    var why = e.hasRate
+      ? ('At ' + Math.round(e.rate).toLocaleString() + ' ' + unit + '/mo, this much will still be on hand when it expires (first-expiry-first-out).')
+      : ('No usage in the selected window, so nothing is burning this down — every dated ' + unit + ' is exposed.');
+    sub = '<span title="' + why + '" style="font-size:9px;font-weight:500;padding:1px 5px;border-radius:4px;background:#4a3410;color:#FAC775;cursor:help;">'
+      + Math.round(e.riskKg).toLocaleString() + ' ' + unitS + ' at risk' + (e.hasRate ? '' : ' · no usage') + '</span>';
+  } else if (e.badDateLots > 0) {
+    sub = '<span title="' + e.badDateLots + ' lot' + (e.badDateLots===1?'':'s') + ' hold an expiry value that cannot be read (e.g. \u201c' + esc(e.badDateSample) + '\u201d) — a typo in the inventory sheet, not a missing date. Fix it there and it appears here."'
+      + ' style="font-size:9px;font-weight:500;padding:1px 5px;border-radius:4px;background:#4a2020;color:#F09595;cursor:help;">'
+      + e.badDateLots + ' bad date' + (e.badDateLots===1?'':'s') + '</span>';
+  } else if (e.noExpiryKg > 0) {
+    sub = '<span title="' + e.noExpiryLots + ' more lot' + (e.noExpiryLots===1?'':'s') + ' (' + Math.round(e.noExpiryKg).toLocaleString() + ' ' + unit + ') carry no expiry date, so they are not included in this projection."'
+      + ' style="font-size:9px;color:#5f5e5a;border-bottom:1px dotted #444441;cursor:help;">+' + e.noExpiryLots + ' undated</span>';
+  }
+  parts.push(line1);
+  if (sub) parts.push('<div style="margin-top:2px;">' + sub + '</div>');
+  return '<td style="' + pad + '">' + parts.join('') + '</td>';
+}
+
 // Short = Available (net = on-hand − committed) is negative. Same value the
 // Available pill uses (afterBadge(m.afterDemand)), so the "Short only" filter and
 // the red "Short" pill can never disagree. Null on-hand → not short.
@@ -8573,17 +9199,39 @@ function shortBtnStyle(active, isShortBtn) {
   return base + 'border:1.5px solid #378ADD;background:#0C447C;color:#85B7EB;';
 }
 
-// Repaint the two segment buttons to reflect materialsShortOnly. Called at the end
+// Expiring segment, amber to match the at-risk badge and the Cover column's
+// tight state, so the three segments read All (blue) / Short (red) / Expiring (amber).
+// FEFO segment reuses the amber-on-dark treatment, one step warmer than Expiring
+// so the three risk segments read as a family rather than as unrelated filters.
+function fefoBtnStyle(active) {
+  var base = 'padding:4px 12px;border-radius:6px;font-weight:'+(active?'500':'400')+';font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;display:inline-flex;align-items:center;gap:5px;';
+  if (!active) return base + 'border:1.5px solid transparent;background:transparent;color:#888780;';
+  return base + 'border:1.5px solid #8a5a10;background:#4a3410;color:#FAC775;';
+}
+function expiringBtnStyle(active) {
+  var base = 'padding:4px 12px;border-radius:6px;font-weight:'+(active?'500':'400')+';font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;display:inline-flex;align-items:center;gap:5px;';
+  if (!active) return base + 'border:1.5px solid transparent;background:transparent;color:#888780;';
+  return base + 'border:1.5px solid #6b5514;background:#4a3410;color:#FAC775;';
+}
+// Repaint the three segment buttons to reflect the active filter. Called at the end
 // of every Materials render (via filterMaterials) so the highlight survives re-render.
+// The segments are mutually exclusive, so "All" is simply neither flag set.
 function paintShortToggle() {
   var wrap = document.getElementById('materialsShortToggle');
   if (!wrap) return;
   var btns = wrap.getElementsByClassName('seg-btn');
-  var i, isShortBtn, active;
+  var i, b;
   for (i = 0; i < btns.length; i++) {
-    isShortBtn = btns[i].getAttribute('data-short') === '1';
-    active = isShortBtn === materialsShortOnly;
-    btns[i].style.cssText = shortBtnStyle(active, isShortBtn);
+    b = btns[i];
+    if (b.getAttribute('data-fefo') === '1') {
+      b.style.cssText = fefoBtnStyle(materialsFefoOnly);
+    } else if (b.getAttribute('data-expiring') === '1') {
+      b.style.cssText = expiringBtnStyle(materialsExpiringOnly);
+    } else if (b.getAttribute('data-short') === '1') {
+      b.style.cssText = shortBtnStyle(materialsShortOnly, true);
+    } else {
+      b.style.cssText = shortBtnStyle(!materialsShortOnly && !materialsExpiringOnly && !materialsFefoOnly, false);
+    }
   }
 }
 
@@ -8591,7 +9239,52 @@ function paintShortToggle() {
 // time-window buttons). Persists across sub-tab switches — never reset elsewhere.
 function setMaterialsShortOnly(v) {
   materialsShortOnly = !!v;
+  if (materialsShortOnly) { materialsExpiringOnly = false; materialsFefoOnly = false; }   // exclusive segments
   trackEvent('materials_filter_change', { filter: 'short_only', value: materialsShortOnly ? 'short' : 'all' });
+  window._selectedMaterial = null;
+  renderMaterials();
+}
+
+function setMaterialsAllSegment() {
+  materialsShortOnly = false;
+  materialsExpiringOnly = false;
+  materialsFefoOnly = false;
+  trackEvent('materials_filter_change', { filter: 'short_only', value: 'all' });
+  window._selectedMaterial = null;
+  renderMaterials();
+}
+
+function setMaterialsFefoOnly(v) {
+  materialsFefoOnly = !!v;
+  if (materialsFefoOnly) {
+    matInlineTab = 'lots';        // ditto — the evidence lives on the Lots tab
+    materialsShortOnly = false;
+    materialsExpiringOnly = false;
+    // Same reasoning as the Expiring segment: a stranded lot often belongs to a
+    // material nothing has drawn recently, and those rows live behind the
+    // zero-usage checkbox. Tick it visibly rather than filter past it.
+    matShowZeroUsage = true;
+  }
+  trackEvent('materials_filter_change', { filter: 'fefo_review', value: materialsFefoOnly ? 'fefo' : 'all' });
+  window._selectedMaterial = null;
+  renderMaterials();
+}
+
+function setMaterialsExpiringOnly(v) {
+  materialsExpiringOnly = !!v;
+  if (materialsExpiringOnly) {
+    matInlineTab = 'lots';        // you filtered for expiry; that is the tab you want
+    materialsShortOnly = false; materialsFefoOnly = false;   // exclusive segments
+    // Reach the zero-usage rows too. Measured on the live feed: with them hidden the
+    // page shows 11,185 kg expired / 3,143 kg at risk; with them shown it is 17,745
+    // and 25,613 — 87% of the at-risk tonnage is material nothing has drawn in six
+    // months, which is precisely how stock ages out unnoticed. An Expiring filter
+    // that silently excluded them would under-report by design. The checkbox is
+    // ticked rather than bypassed, so the widened scope is visible, not a hidden
+    // side effect, and unticking it still works.
+    matShowZeroUsage = true;
+  }
+  trackEvent('materials_filter_change', { filter: 'expiring', value: materialsExpiringOnly ? 'expiring' : 'all' });
   window._selectedMaterial = null;
   renderMaterials();
 }
@@ -8603,7 +9296,7 @@ function filterMaterials() {
   // Segment badges reflect every OTHER filter (time window + zero-usage already
   // baked into matList, plus search) but never the short toggle itself, so toggling
   // it changes what's shown, not the counts.
-  var countAll = 0, countShort = 0;
+  var countAll = 0, countShort = 0, countExpiring = 0, countFefo = 0;
   matList.forEach(function(m, i) {
     var row = document.getElementById('mat-row-'+i);
     var ir = document.getElementById('mat-inline-row-'+i);
@@ -8612,18 +9305,24 @@ function filterMaterials() {
     var searchMatch = !q || m.name.toLowerCase().indexOf(q) !== -1
       || (m.stockParts || m.partNums).some(function(p){ return p.toLowerCase().indexOf(q) !== -1; });
     var shortRow = matIsShort(m);
-    if (searchMatch) { countAll++; if (shortRow) countShort++; }
+    var expiringRow = matIsExpiring(m);
+    var fefoRow = matHasFefoReview(m);
+    if (searchMatch) { countAll++; if (shortRow) countShort++; if (expiringRow) countExpiring++; if (fefoRow) countFefo++; }
     // Short gate stacks AFTER search: visible only if it passes search AND (short
     // filter off OR the row is short). Rows stay in the DOM (just hidden), so the
     // rank numbers baked into each row are preserved.
-    var visible = searchMatch && (!materialsShortOnly || shortRow);
+    var visible = searchMatch && (!materialsShortOnly || shortRow) && (!materialsExpiringOnly || expiringRow) && (!materialsFefoOnly || fefoRow);
     if (row) row.style.display = visible ? '' : 'none';
     if (ir) ir.style.display = (visible && window._selectedMaterial===m.name) ? '' : 'none';
   });
   var elAll = document.getElementById('shortCountAll');
   var elShort = document.getElementById('shortCountShort');
+  var elExp = document.getElementById('shortCountExpiring');
+  var elFefo = document.getElementById('shortCountFefo');
+  if (elFefo) elFefo.innerHTML = countFefo;
   if (elAll) elAll.innerHTML = countAll;
   if (elShort) elShort.innerHTML = countShort;
+  if (elExp) elExp.innerHTML = countExpiring;
   paintShortToggle();
 }
 
@@ -8764,12 +9463,9 @@ function matSummaryInner(m, idx, monthKeys, unit) {
   }
   // Left-aligned segmented control, matching the By quarter / By customer toggle
   // on the Jars/Bottles/Lids cards. Replaces the old section label.
-  var toggle = '<div style="display:flex;align-items:center;margin-bottom:10px;">'
-    + '<div style="display:flex;gap:2px;padding:3px;background:#1a1d20;border:0.5px solid #2c2c2a;border-radius:8px;">'
-      + '<button onclick="setMatSummaryView(\'quarter\')" style="'+navBtnStyle(matSummaryView==='quarter')+'">By quarter</button>'
-      + '<button onclick="setMatSummaryView(\'customer\')" style="'+navBtnStyle(matSummaryView==='customer')+'">By customer</button>'
-    + '</div>'
-  + '</div>';
+  // The By quarter / By customer toggle was promoted into the panel's tab bar, so
+  // this section no longer carries its own control.
+  var toggle = '';
 
   var tableHTML;
   if (matSummaryView === 'customer') {
@@ -9054,6 +9750,291 @@ function setMatSummaryView(view) {
   if (el) el.innerHTML = matSummaryInner(ctx.m, ctx.idx, ctx.monthKeys, ctx.unit);
 }
 
+
+// ── Inventory lots, first-expiry-first-out ────────────────────────────────
+// The actionable half of expiry tracking: not "this material has a problem" but
+// "pull T26652 from 8L-21-B, it dies Monday". Ordered the way the floor should
+// pick — earliest expiry first, undated last — so the top row is the next drum to
+// use, and tagged USE FIRST so nobody has to read dates to work that out.
+//
+// Shown for grouped materials too, with a Part # column, because a SKU group's
+// lots live under several part numbers and the whole point is one ranked list.
+// Capped at MAT_LOT_CAP rows: a group can carry 40+ lots and the ones that matter
+// are at the front. The cap is stated, never silent.
+var MAT_LOT_CAP = 15;
+// A high-turnover lot can be spread over 20+ bins (one Creatine lot lists 26), so
+// the cell shows the first few and parks the rest in the tooltip. Truncating with
+// the count visible beats both wrapping the table apart and silently dropping bins.
+var MAT_LOC_SHOW = 3;
+// M/D/YYYY from an epoch ms, for the export and the lot table.
+function _matExpDateStr(ms) { var d = new Date(ms); return (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear(); }
+function _matLocShort(loc) {
+  var raw = (loc == null ? '' : String(loc)).trim();
+  if (!raw) return '<span style="color:#5f5e5a;">—</span>';
+  var bins = raw.split(/\s*,\s*/).filter(function(x){ return x !== ''; });
+  if (bins.length <= MAT_LOC_SHOW) return esc(bins.join(', '));
+  return '<span title="' + esc(bins.join(', ')) + '" style="border-bottom:1px dotted #444441;cursor:help;">'
+    + esc(bins.slice(0, MAT_LOC_SHOW).join(', '))
+    + ' <span style="color:#5f5e5a;">+' + (bins.length - MAT_LOC_SHOW) + '</span></span>';
+}
+// Evidence for one "skipped N x" badge: every pick that went past this lot, what
+// was pulled instead and when. Receipt is proven two ways — the lot's own receiving
+// date precedes the pick, and its reconstructed balance was positive — so the
+// "had on hand" column is the answer to "were we sure we had it?".
+function _fefoDetailRowHTML(miss, unit, nCols) {
+  var evs = miss.events || [];
+  if (!evs.length) return '';
+  var th = 'text-align:left;padding:3px 8px;font-size:9px;color:#5f5e5a;font-weight:500;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;';
+  var thR = th.replace('text-align:left', 'text-align:right');
+  var rows = evs.map(function(ev){
+    var td = 'padding:3px 8px;font-size:11px;white-space:nowrap;';
+    // Days of life this lot still had when it was passed over — the crux of it.
+    var lifeLeft = (miss.exp != null) ? Math.round((miss.exp - ev.when) / _EXPIRY_MS_PER_DAY) : null;
+    return '<tr>'
+      + '<td style="' + td + 'color:#cfcdc7;">' + _matExpDateStr(ev.when) + '</td>'
+      + '<td style="' + td + 'color:#888780;">' + (ev.orderLot ? esc(ev.orderLot) : '—') + '</td>'
+      + '<td style="' + td + '">' + _blendCopyCell(ev.usedLot) + '</td>'
+      + '<td style="' + td + 'text-align:right;color:#888780;">' + (ev.usedExp != null ? _matExpDateStr(ev.usedExp) : '—') + '</td>'
+      + '<td style="' + td + 'text-align:right;color:#cfcdc7;">' + (ev.qty ? fmtStockQty(ev.qty) + ' ' + unit : '—') + '</td>'
+      + '<td style="' + td + 'text-align:right;color:#85B7EB;">' + fmtStockQty(ev.hadKg) + ' ' + unit + '</td>'
+      + '<td style="' + td + 'text-align:right;color:' + (lifeLeft != null && lifeLeft <= 90 ? '#FAC775' : '#888780') + ';">'
+        + (lifeLeft == null ? '—' : (lifeLeft < 0 ? 'past date' : lifeLeft + 'd')) + '</td>'
+      + '</tr>';
+  }).join('');
+  var note = 'Reconstructed from the pick sheet. "We had" is this lot\u2019s balance that day (current stock plus everything picked from it since)'
+    + (miss.received ? '; it was received ' + esc(miss.received) : '')
+    + '. Skipping a lot can be legitimate — allergen segregation, a customer-specific lot, a hold — so read this as a prompt to look, not a verdict.';
+  if (miss.eventsTotal > evs.length) note = (miss.eventsTotal - evs.length) + ' earlier skips not shown. ' + note;
+  return '<tr><td colspan="' + nCols + '" style="padding:0;">'
+    + '<div style="background:#0f1012;border-left:2px solid #FAC775;padding:8px 12px 10px 12px;">'
+    + '<div style="font-size:10px;font-weight:500;color:#FAC775;text-transform:uppercase;letter-spacing:.04em;font-family:system-ui;margin-bottom:5px;">'
+      + 'What was picked instead &middot; ' + miss.skips + ' skip' + (miss.skips===1?'':'s') + '</div>'
+    + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">'
+    + '<thead><tr style="border-bottom:0.5px solid #2c2c2a;">'
+      + '<th style="' + th + '">Date</th><th style="' + th + '">Production lot</th><th style="' + th + '">Used instead</th>'
+      + '<th style="' + thR + '">Its expiry</th><th style="' + thR + '">Kg pulled</th>'
+      + '<th style="' + thR + '">We had</th><th style="' + thR + '">Life left</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+    + '<div style="font-size:10px;color:#5f5e5a;font-family:system-ui;margin-top:6px;line-height:1.5;">' + note + '</div>'
+    + '</div></td></tr>';
+}
+// Expand/collapse one lot's skip evidence, then repaint just the open material's
+// panel — the table lives inside it, so no full re-render is needed.
+function toggleFefoDetail(lotNo) {
+  _fefoOpenLot = (_fefoOpenLot === lotNo) ? null : lotNo;
+  var list = window._matList || [], i;
+  for (i = 0; i < list.length; i++) {
+    if (list[i].name === window._selectedMaterial) { renderMatInline(list[i], i); return; }
+  }
+}
+function matLotTableHTML(m, unit) {
+  var e = m && m.expiry;
+  if (!e || !e.lots.length) return '';
+  // FEFO: dated ascending, then undated (which can't be ordered).
+  var lots = e.lots.slice().sort(function(a, b){
+    if (a.exp == null && b.exp == null) return b.qty - a.qty;
+    if (a.exp == null) return 1;
+    if (b.exp == null) return -1;
+    return a.exp - b.exp;
+  });
+  var shown = lots.slice(0, MAT_LOT_CAP), useFirstMarked = false, i;
+  var _fefo = computeFefoMisses();
+  var multiPart = !!m.isGroup;
+  var rows = shown.map(function(L){
+    var expired = L.days != null && L.days < 0;
+    var soon = L.days != null && L.days >= 0 && L.days <= EXPIRY_SOON_DAYS;
+    var dateCol = expired ? '#F09595' : (L.days != null && L.days <= 30) ? '#F09595' : soon ? '#FAC775' : '#cfcdc7';
+    var dateTxt, daysTxt;
+    if (L.exp == null) {
+      // Unreadable value and empty cell are different problems; say which.
+      dateTxt = L.expRaw
+        ? '<span title="Unreadable value on the inventory sheet — a typo, not a missing date." style="color:#F09595;">' + esc(L.expRaw) + '</span>'
+        : '<span style="color:#5f5e5a;">not recorded</span>';
+      daysTxt = '<span style="color:#5f5e5a;">—</span>';
+    } else {
+      var d = new Date(L.exp);
+      dateTxt = '<span style="color:' + dateCol + ';">' + (d.getMonth()+1) + '/' + d.getDate() + '/' + d.getFullYear() + '</span>';
+      daysTxt = expired
+        ? '<span style="font-size:9px;font-weight:500;padding:1px 5px;border-radius:4px;background:#791F1F;color:#F09595;">EXPIRED</span>'
+        : '<span style="color:' + dateCol + ';">' + L.days + 'd</span>';
+    }
+    // USE FIRST goes on the earliest still-usable lot — never on expired stock.
+    var tag = '';
+    if (!useFirstMarked && !expired && L.exp != null) {
+      useFirstMarked = true;
+      tag = ' <span title="Earliest expiry still in date — pick this one next." style="font-size:9px;font-weight:500;padding:1px 5px;border-radius:4px;background:#0C447C;color:#85B7EB;white-space:nowrap;">USE FIRST</span>';
+    }
+    // Was this lot picked past while it still had life? Shown ONLY when the lot is
+    // itself at risk — expired, or inside the review horizon.
+    //
+    // It used to appear on every stranded lot, greyed when off the review list, on the
+    // theory that it was visible without shouting. That was wrong: 80% of those badges
+    // (606 of 757) sit on lots more than 90 days out, and a material like Creatine —
+    // 51,000 kg on hand, 85,000 kg committed, 17,000 kg/month burn, every lot 400+ days
+    // out — wore ten of them at once. "Skipped 169x" on stock that will be consumed two
+    // years early is not a finding, and a badge that appears on every row teaches you to
+    // stop reading it. FEFO discipline only matters when turnover does not outrun shelf
+    // life, so the badge now follows the risk, not the count.
+    var miss = _fefo.byLot[(L.lot || '').toUpperCase()], missTag = '';
+    var missMatters = miss && miss.skips > 0 && L.days != null && L.days <= FEFO_REVIEW_HORIZON_DAYS;
+    if (missMatters) {
+      var lastTxt = miss.lastSkip ? _matExpDateStr(miss.lastSkip) : '';
+      missTag = ' <span title="Passed over ' + miss.skips + ' time' + (miss.skips===1?'':'s')
+        + ' in favour of ' + miss.altLots + ' later-expiring lot' + (miss.altLots===1?'':'s')
+        + (lastTxt ? ', most recently ' + lastTxt : '')
+        + '. Reconstructed from the pick sheet — legitimate reasons exist (allergen segregation, a customer-specific lot, a hold), so treat it as a prompt to look, not a verdict."'
+        + ' onclick="event.stopPropagation();toggleFefoDetail(' + jsStr(L.lot) + ')"'
+        + ' style="font-size:9px;font-weight:500;padding:1px 5px;border-radius:4px;background:'
+        + (miss.review ? '#4a3410;color:#FAC775' : '#2c2c2a;color:#888780')
+        + ';cursor:pointer;white-space:nowrap;border:0.5px solid ' + (_fefoOpenLot === L.lot ? '#FAC775' : 'transparent') + ';">skipped '
+        + miss.skips + '\u00d7' + (_fefoOpenLot === L.lot ? ' \u25b4' : '') + '</span>';
+    }
+    var td = 'padding:5px 10px;font-size:11px;white-space:nowrap;';
+    return '<tr style="border-bottom:0.5px solid #2c2c2a;' + (expired ? 'background:#1e1414;' : '') + '">'
+      + '<td style="' + td + '">' + _blendCopyCell(L.lot) + tag + missTag + '</td>'
+      + (multiPart ? '<td style="' + td + 'color:#888780;">' + esc(L.part) + '</td>' : '')
+      + '<td style="' + td + 'text-align:right;color:#85B7EB;font-weight:500;">' + fmtStockQty(L.qty) + ' ' + unit + '</td>'
+      + '<td style="' + td + 'text-align:right;">' + dateTxt + '</td>'
+      + '<td style="' + td + 'text-align:right;">' + daysTxt + '</td>'
+      + '<td style="' + td + 'color:#cfcdc7;max-width:260px;overflow:hidden;text-overflow:ellipsis;">' + _matLocShort(L.loc) + '</td>'
+      + '<td style="' + td + 'color:#888780;max-width:200px;overflow:hidden;text-overflow:ellipsis;">' + (L.supplier ? esc(L.supplier) : '') + (L.batch ? ' <span style="color:#5f5e5a;">' + esc(L.batch) + '</span>' : '') + '</td>'
+      + '<td style="' + td + 'padding-right:14px;text-align:right;color:#5f5e5a;">' + (L.received ? esc(L.received) : '—') + '</td>'
+      + '</tr>'
+      + ((_fefoOpenLot === L.lot && missMatters) ? _fefoDetailRowHTML(miss, unit, multiPart ? 8 : 7) : '');
+  }).join('');
+  var th = 'text-align:left;padding:4px 10px;font-size:10px;color:#5f5e5a;font-weight:500;font-family:system-ui;white-space:nowrap;';
+  var thR = th.replace('text-align:left', 'text-align:right');
+  // Footnote carries the caveats the table itself cannot: what the ordering assumes,
+  // what got cut by the cap, and how much stock has no usable date.
+  var notes = [];
+  if (lots.length > shown.length) notes.push((lots.length - shown.length) + ' more lot' + ((lots.length - shown.length)===1?'':'s') + ' not shown (earliest expiry first).');
+  if (e.noExpiryLots) notes.push(e.noExpiryLots + ' lot' + (e.noExpiryLots===1?'':'s') + ' (' + Math.round(e.noExpiryKg).toLocaleString() + ' ' + unit + ') carry no usable expiry date and are listed last.');
+  notes.push('Ordered first-expiry-first-out. Picking order is an assumption, not a record of what was pulled.');
+  return '<div style="margin-top:14px;border-top:0.5px solid #2c2c2a;padding-top:10px;">'
+    + '<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;font-family:system-ui;margin-bottom:6px;">Inventory lots &middot; use-first order</div>'
+    + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">'
+    + '<thead><tr style="border-bottom:0.5px solid #2c2c2a;">'
+      + '<th style="' + th + '">Lot #</th>'
+      + (multiPart ? '<th style="' + th + '">Part #</th>' : '')
+      + '<th style="' + thR + '">On hand</th>'
+      + '<th style="' + thR + '">Expires</th>'
+      + '<th style="' + thR + '">Left</th>'
+      + '<th style="' + th + '">Location</th>'
+      + '<th style="' + th + '">Supplier / batch</th>'
+      + '<th style="' + thR + 'padding-right:14px;">Received</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+    + '<div style="font-size:10px;color:#5f5e5a;font-family:system-ui;margin-top:6px;line-height:1.5;">' + notes.join(' ') + '</div>'
+    + '</div>';
+}
+// Which tab this material is showing. Parts only exists for grouped SKUs, so a
+// remembered 'parts' must fall back rather than render an empty panel.
+function _matTab(m) {
+  var t = matInlineTab;
+  if (t === 'parts' && !(m && m.isGroup)) return 'usage';
+  return (t === 'usage' || t === 'customers' || t === 'parts' || t === 'lots') ? t : 'usage';
+}
+function setMatInlineTab(v) {
+  matInlineTab = v;
+  if (v !== 'customers') drillCustomer = null;   // leaving Customers drops its product drill
+  var list = window._matList || [], i;
+  for (i = 0; i < list.length; i++) {
+    if (list[i].name === window._selectedMaterial) { renderMatInline(list[i], i); return; }
+  }
+}
+// Tab bar for the expanded panel. Counts live on the labels, and Lots carries a
+// risk dot when the material holds expired stock or a lot on the FEFO review list —
+// so the bar tells you there is something to look at without making you look. That
+// is strictly more than the old stacked layout gave you, where the same fact sat
+// 700px down the page.
+// Every in-stock lot whose expiry cannot be used, with the offending cell shown
+// verbatim so it can be found and corrected in the inventory sheet. Two problems
+// live here because they are fixed in the same place but need different actions:
+// "Unreadable" is a typo to correct, "Not recorded" is a date to enter.
+function expiryIssuesPanelHTML() {
+  var out = [], pn, i;
+  for (pn in inventoryByPart) {
+    if (!inventoryByPart.hasOwnProperty(pn)) continue;
+    var rec = inventoryByPart[pn], lr = rec.lotRows || [];
+    for (i = 0; i < lr.length; i++) {
+      if (lr[i].exp != null) continue;
+      out.push({ part: pn, material: rec.material || '', lot: lr[i].lot, qty: lr[i].qty,
+                 raw: lr[i].expRaw || '', loc: lr[i].loc || '', received: lr[i].received || '' });
+    }
+  }
+  if (!out.length) return '';
+  // Unreadable first (a typo is a two-second fix), then by quantity at stake.
+  out.sort(function(a, b){
+    var ab = a.raw ? 0 : 1, bb = b.raw ? 0 : 1;
+    if (ab !== bb) return ab - bb;
+    return b.qty - a.qty;
+  });
+  var th = 'text-align:left;padding:4px 10px;font-size:10px;color:#5f5e5a;font-weight:500;font-family:system-ui;white-space:nowrap;';
+  var rows = out.map(function(r){
+    var td = 'padding:5px 10px;font-size:11px;white-space:nowrap;';
+    return '<tr style="border-bottom:0.5px solid #2c2c2a;">'
+      + '<td style="' + td + 'color:#e8e6e0;max-width:280px;overflow:hidden;text-overflow:ellipsis;">' + esc(r.material) + '</td>'
+      + '<td style="' + td + 'color:#888780;">' + esc(r.part) + '</td>'
+      + '<td style="' + td + '">' + _blendCopyCell(r.lot) + '</td>'
+      + '<td style="' + td + 'text-align:right;color:#85B7EB;">' + fmtStockQty(r.qty) + '</td>'
+      + '<td style="' + td + '">' + (r.raw
+          ? '<span style="color:#F09595;font-weight:500;">' + esc(r.raw) + '</span> <span style="font-size:9px;color:#5f5e5a;">unreadable</span>'
+          : '<span style="color:#5f5e5a;">(empty)</span> <span style="font-size:9px;color:#5f5e5a;">not recorded</span>') + '</td>'
+      + '<td style="' + td + 'color:#cfcdc7;">' + _matLocShort(r.loc) + '</td>'
+      + '<td style="' + td + 'padding-right:14px;text-align:right;color:#5f5e5a;">' + (r.received ? esc(r.received) : '—') + '</td>'
+      + '</tr>';
+  }).join('');
+  return '<div style="background:#1e1414;border:0.5px solid #4a2020;border-left:3px solid #F09595;border-radius:0 10px 10px 0;margin:-6px 0 14px;overflow:hidden;">'
+    + '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:10px 14px;background:#241717;">'
+      + '<span style="font-size:11px;font-weight:500;color:#F09595;text-transform:uppercase;letter-spacing:.04em;">Expiry dates to fix</span>'
+      + '<span style="font-size:11px;color:#888780;font-family:system-ui;">' + out.length + ' lot' + (out.length===1?'':'s')
+        + ' &middot; edit EXP. Date in the Raw Material Inventory sheet; the dashboard picks it up on the next refresh</span>'
+      + '<button onclick="toggleExpiryIssues()" style="margin-left:auto;padding:3px 10px;border-radius:5px;border:0.5px solid #4a2020;background:transparent;color:#888780;font-size:11px;cursor:pointer;font-family:system-ui;">Hide</button>'
+    + '</div>'
+    + '<div style="overflow-x:auto;max-height:320px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;background:#1a1416;">'
+    + '<thead><tr style="border-bottom:0.5px solid #4a2020;">'
+      + '<th style="' + th + '">Material</th><th style="' + th + '">Part #</th><th style="' + th + '">Lot #</th>'
+      + '<th style="' + th.replace('text-align:left','text-align:right') + '">On hand</th>'
+      + '<th style="' + th + '">EXP. Date cell</th><th style="' + th + '">Location</th>'
+      + '<th style="' + th.replace('text-align:left','text-align:right') + 'padding-right:14px;">Received</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+    + '</div>';
+}
+function toggleExpiryIssues() {
+  _expiryIssuesOpen = !_expiryIssuesOpen;
+  renderMaterials();
+}
+function matInlineTabBar(m, idx) {
+  var e = m.expiry || null;
+  var lotN = e ? e.lots.length : 0;
+  var custN = (function(){
+    try { return buildMatCustomerData(m, window._matMonthKeys || []).length; } catch (err) { return 0; }
+  })();
+  var partN = m.isGroup ? Object.keys(m.partBreakdown || {}).length : 0;
+  var risk = !!(e && (e.expiredKg > 0 || e.badDateLots > 0)) || matHasFefoReview(m);
+  var riskTip = !e ? '' : (e.expiredKg > 0
+      ? Math.round(e.expiredKg).toLocaleString() + ' ' + matUnit(m.name) + ' already past date'
+      : (matHasFefoReview(m) ? 'A lot here keeps getting picked past while at risk' : 'An expiry value on this material cannot be read'));
+  var tabs = [
+    { id:'usage',     label:'Usage' },
+    { id:'customers', label:'Customers', count: custN },
+    { id:'parts',     label:'Parts',     count: partN, only: !!m.isGroup },
+    { id:'lots',      label:'Lots',      count: lotN,  dot: risk, dotTip: riskTip }
+  ];
+  var active = _matTab(m);
+  var html = tabs.map(function(t){
+    if (t.only === false) return '';
+    var on = active === t.id;
+    var st = 'padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:system-ui;transition:all .15s;display:inline-flex;align-items:center;gap:5px;'
+      + (on ? 'border:1.5px solid #378ADD;background:#0C447C;color:#85B7EB;font-weight:500;'
+            : 'border:1.5px solid transparent;background:transparent;color:#888780;font-weight:400;');
+    return '<button onclick="event.stopPropagation();setMatInlineTab(' + jsStr(t.id) + ')" style="' + st + '">'
+      + t.label
+      + (t.count ? ' <span style="font-size:10px;opacity:.75;">' + t.count + '</span>' : '')
+      + (t.dot ? ' <span title="' + esc(t.dotTip || '') + '" style="width:6px;height:6px;border-radius:50%;background:#FAC775;display:inline-block;"></span>' : '')
+      + '</button>';
+  }).join('');
+  return '<div style="display:flex;align-items:center;gap:2px;padding:3px;margin-bottom:12px;background:#1a1d20;border:0.5px solid #2c2c2a;border-radius:8px;width:fit-content;">' + html + '</div>';
+}
 function renderMatInline(m, idx) {
   var panel = document.getElementById('mat-inline-'+idx);
   if (!panel) return;
@@ -9105,8 +10086,9 @@ function renderMatInline(m, idx) {
             + '<th style="text-align:right;padding:4px 14px;font-size:10px;color:#5f5e5a;font-weight:500;font-family:system-ui;">Lots</th>'
           + '</tr></thead><tbody>'+invRows+'</tbody></table></div>'
         + '</div>'
+        + matLotTableHTML(m, unit)
       + '</div>';
-    return;
+    return;   // no usage series here, so no tabs — the two tables are all there is
   }
 
   var monthKeys = window._matMonthKeys || [];
@@ -9114,6 +10096,10 @@ function renderMatInline(m, idx) {
   var chartData = monthKeys.map(function(k){ return Math.round(m.byMonth[k]||0); });
 
   // Quarterly / by-customer consumption summary (toggle lives in the section header)
+  // The tab is the single source of truth; matSummaryView is derived from it every
+  // render rather than kept in sync by the setter, so a deep link or a stale value
+  // can never leave the Customers tab showing the quarterly table.
+  matSummaryView = (_matTab(m) === 'customers') ? 'customer' : 'quarter';
   var summaryHTML = '<div id="mat-summary-'+idx+'">'+matSummaryInner(m, idx, monthKeys, unit)+'</div>';
 
   // Per-part breakdown table (grouped SKUs only)
@@ -9223,10 +10209,15 @@ function renderMatInline(m, idx) {
           + '<div style="font-size:15px;font-weight:500;color:#e8e6e0;font-family:system-ui;">'+m.lotCount+'</div></div>'
       + '</div>'
       + _stockCompositionHTML(m, unit)
-      + '<div style="position:relative;height:160px;"><canvas id="mat-chart-'+idx+'" role="img" aria-label="Monthly '+esc(unit)+' for '+esc(m.name)+'">Trend.</canvas></div>'
-      + '<div id="mat-month-drill-'+idx+'" style="margin-top:0;"></div>'
-      + summaryHTML
-      + breakdownHTML
+      + matInlineTabBar(m, idx)
+      + (_matTab(m) === 'usage'
+          ? '<div style="position:relative;height:160px;"><canvas id="mat-chart-'+idx+'" role="img" aria-label="Monthly '+esc(unit)+' for '+esc(m.name)+'">Trend.</canvas></div>'
+            + '<div id="mat-month-drill-'+idx+'" style="margin-top:0;"></div>'
+            + summaryHTML
+          : '')
+      + (_matTab(m) === 'customers' ? summaryHTML : '')
+      + (_matTab(m) === 'parts' ? breakdownHTML : '')
+      + (_matTab(m) === 'lots' ? matLotTableHTML(m, unit) : '')
     + '</div>';
 
   // Stash context so the By quarter / By customer toggle can rebuild just the
@@ -9239,6 +10230,9 @@ function renderMatInline(m, idx) {
     setTimeout(function(){ renderMatMonthDrill(m, idx, ds.mk, ds.label, ds.barIdx); }, 50);
   }
   if (window['matChart_'+idx]) { window['matChart_'+idx].destroy(); window['matChart_'+idx]=null; }
+  // Only exists on the Usage tab. Chart.js measures its canvas at construction, so
+  // building it while hidden yields a zero-width chart — hence render-on-visible
+  // rather than render-then-hide.
   var ctx = document.getElementById('mat-chart-'+idx);
   if (!ctx) return;
   var skipLabels = monthKeys.length > 12;
@@ -9496,6 +10490,10 @@ function renderMaterials() {
     var completedKeys = monthKeys.slice(0, monthKeys.length - 1);
     var spark6Keys = completedKeys.slice(-6);
     m.spark = spark6Keys.map(function(k){ return Math.round(m.byMonth[k]||0); });
+    // Same slice over the parallel label list ("Aug 26"), so the sparkline can name its
+    // own bars on hover. Zero-baselined bars can't show small variation on a large flat
+    // series, so the exact monthly figures need to be reachable.
+    m.sparkLabels = monthLabels.slice(0, monthLabels.length - 1).slice(-6);
     // Last COMPLETED month
     var lastMoKey = completedKeys.length ? completedKeys[completedKeys.length-1] : monthKeys[monthKeys.length-1];
     m.lastMonth = Math.round(m.byMonth[lastMoKey]||0);
@@ -9549,6 +10547,10 @@ function renderMaterials() {
     // tracked; null stock → null net.
     m.demand = demandForParts(stockParts);
     m.afterDemand = (m.stock != null) ? (m.stock - m.demand) : null;
+    // Expiry position across every lot of every part in the group, walked FEFO
+    // against this material's own run rate. Uses avg3 when it exists, else avg6 —
+    // recent pace is the better predictor of what will actually burn down.
+    m.expiry = expiryPosition(stockParts, m.avg3 || m.avg6);
   });
 
   var kgMats=allMats.filter(function(m){return !isSoftgel(m.name);}).sort(function(a,b){return b.totalKg-a.totalKg;});
@@ -9587,6 +10589,10 @@ function renderMaterials() {
       g.lotCount = g.lots;
       g.demand = demandForParts(g.partNums);
       g.afterDemand = g.stock - g.demand;
+      // Zero-usage rows need the expiry walk MORE than consumed rows do, not less:
+      // stock nothing is drawing down is exactly what quietly ages out. Rate 0, so
+      // every dated kg lands in riskKg and the cell labels it "no usage".
+      g.expiry = expiryPosition(g.stockParts, 0);
       return g;
     }).sort(function(a,b){ return b.stock - a.stock; });
   })();
@@ -9598,25 +10604,64 @@ function renderMaterials() {
   window._matMonthLabels=monthLabels;
   if (!window._selectedMaterial || !matList.some(function(m){ return m.name === window._selectedMaterial; })) window._selectedMaterial=null;
 
-  function sparkSVG(data, trend) {
-    var w=100,h=28,pad=3;
+  // Zero-baselined bars, one per completed month — the same visual language as the
+  // Jars/Bottles/Lids views, which is the lesser reason to use it. The polyline this
+  // replaces floored its y-axis at the smallest POSITIVE month rather than at zero,
+  // and that distorted two ways:
+  //
+  //   • A material holding steady around 17,500 kg/mo — a 1.5% spread — drew a
+  //     full-amplitude zigzag identical to one that grew 6x over the same window.
+  //     Hence rows badged "~flat" sitting next to dramatic peaks, the chart arguing
+  //     with the badge beside it.
+  //   • A zero month was not flattened, it was off the canvas: at min-baseline
+  //     [0,1200,0,900,1500,0] puts the zeros at y=58 in a 28px viewBox, so the
+  //     segments reaching them were clipped and a sparse material drew a broken line
+  //     with invisible gaps. There are 328 zero-usage materials and many more
+  //     partially sparse ones.
+  //
+  // Height now means quantity, and a zero month gets a dim stub so "nothing was
+  // consumed" is something you can see rather than an absence.
+  //
+  // Drawn as <rect>s inside the existing single SVG rather than the flex divs the
+  // Jars view uses: that view renders ~30 rows, this one renders every material (860,
+  // or 1,188 with zero-usage shown), so six divs per row would spend ~7,000 extra DOM
+  // nodes on an identical picture.
+  function sparkSVG(data, trend, labels, unitFull) {
+    // Bars fill the column: width is derived from the bar count, not fixed, which puts
+    // the usual six months at 13.5px. The Jars/Bottles/Lids sparkline now follows the
+    // same rule (see SPARK_CANVAS in renderProcurement) rather than the same literal
+    // pixel value — it has to, because its bar count grows by one every quarter while
+    // this one is always exactly six.
+    var w=100, h=28, padX=2, padTop=3, gap=3;
+    var n=data.length||1;
+    var barW=(w - padX*2 - gap*(n-1))/n;
+    var x0=padX;
     var max=Math.max.apply(null,data)||1;
-    // Guard: Math.min over an empty list (all-zero series) is Infinity, which
-    // poisons range and yields NaN coordinates. Fall back to 0 when no positives.
-    var positives=data.filter(function(v){return v>0;});
-    var min=positives.length?Math.min.apply(null,positives):0;
-    var range=max-min||1;
-    var pts=data.map(function(v,i){
-      var x=pad+(i/(Math.max(data.length-1,1)))*(w-pad*2);
-      var y=h-pad-(v-min)/range*(h-pad*2);
-      return x.toFixed(1)+','+y.toFixed(1);
-    });
+    var usable=h-padTop;              // 3px headroom so the tallest bar isn't flush
     var col=trend==='up'?'#1D9E75':trend==='down'?'#E24B4A':trend==='volatile'?'#EF9F27':'#888780';
-    var ld=pts[pts.length-1].split(',');
+    var bars=data.map(function(v,i){
+      var isZero=!(v>0);
+      // Round the height first and derive y from it, rather than rounding both: doing
+      // them independently let a bar's bottom edge land 0.1px off the baseline, and a
+      // shared baseline is the entire reason one bar is comparable to the next.
+      var bh=+(isZero?2:Math.max(2,(v/max)*usable)).toFixed(1);
+      // Most recent month at full strength, earlier ones stepped back — carries the
+      // cue the old trailing dot gave without spending a separate mark on it.
+      var op=isZero?'.28':(i===n-1?'1':'.72');
+      return '<rect x="'+(x0+i*(barW+gap)).toFixed(1)+'" y="'+(h-bh).toFixed(1)+'"'
+        +' width="'+barW.toFixed(1)+'" height="'+bh.toFixed(1)+'"'
+        +' fill="'+(isZero?'#5f5e5a':col)+'" opacity="'+op+'" rx="1"/>';
+    }).join('');
+    // The one thing an honest axis costs: small variation on a large flat series is no
+    // longer visible. So the figures are one hover away, month by month.
+    var tip='';
+    if (labels && labels.length===data.length) {
+      tip='<title>'+esc(labels.map(function(l,i){
+        return l+': '+(data[i]>0 ? data[i].toLocaleString()+' '+unitFull : 'no usage');
+      }).join('\n'))+'</title>';
+    }
     return '<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="display:block;">'
-      +'<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+col+'" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>'
-      +'<circle cx="'+ld[0]+'" cy="'+ld[1]+'" r="2.5" fill="'+col+'"/>'
-      +'</svg>';
+      +tip+bars+'</svg>';
   }
 
   function vsBadge(pct) {
@@ -9656,11 +10701,13 @@ function renderMaterials() {
   // show a shimmer in the stock columns rather than "—", which reads as "no data".
   var invLoading = !inventoryLoaded;
   var demLoading = !demandLoaded;
-  var colSpan = 12; // #, Material, [On hand·Committed·Available·Cover], [Last mo·3mo·6mo·trend·3<->6·total]
+  var colSpan = 13; // #, Material, [On hand·Committed·Available·Cover·Expiry], [Last mo·3mo·6mo·trend·3<->6·total]
   var tableRows = matList.map(function(m,i){
     var isSelected = m.name===window._selectedMaterial;
-    var sg=isSoftgel(m.name), unit=matUnit(m.name);
-    function fmt(v){ return v>0?Math.round(v).toLocaleString()+' '+unit:'—'; }
+    // unit spells the word out for tooltips and the badge; unitS is what goes in the
+    // numeric cells, where the column width is fixed and cannot absorb "softgels".
+    var sg=isSoftgel(m.name), unit=matUnit(m.name), unitS=matUnitShort(m.name);
+    function fmt(v){ return v>0?Math.round(v).toLocaleString()+' '+unitS:'—'; }
     // Months of supply = on-hand ÷ 3-mo avg burn. Null (no usage history) → em dash.
     var monthsCover = computeMonthsOfCover(m.stock, m.avg3);
     // Grouped rows list the whole SKU-group roster on the subline, not just the parts
@@ -9668,11 +10715,18 @@ function renderMaterials() {
     // so showing only consumed parts made the row look like it was missing parts.
     // Dormant parts render muted, and the badge counts active-of-total.
     var dormant = m.dormantParts || [];
-    var rosterParts = m.isGroup ? m.partNums.concat(dormant).sort() : m.partNums;
+    // Active parts first, then dormant — the trailing .sort() used to flatten the two
+    // groups into one alphabetical run, so which parts actually matter was down to how
+    // their numbers happened to collate. Both lists are already sorted individually
+    // (partNums and dormantParts are built sorted), so concatenating is enough. This
+    // also matches the expanded panel's Breakdown by part #, which has always put
+    // consumed parts before dormant ones. With the balanced grid, WPC's first row is
+    // now its three active parts and the second row its three dormant ones.
+    var rosterParts = m.isGroup ? m.partNums.concat(dormant) : m.partNums;
     var dimSet = {};
     dormant.forEach(function(p){ dimSet[p] = true; });
     var partsBadge = dormant.length
-      ? (m.partNums.length ? m.partNums.length + ' of ' + rosterParts.length + ' active' : rosterParts.length + ' parts')
+      ? (m.partNums.length ? m.partNums.length + ' of ' + rosterParts.length + ' in use' : rosterParts.length + ' parts')
       : m.partNums.length + ' parts';
     var partsBadgeTitle = dormant.length
       ? m.partNums.length + ' of ' + rosterParts.length + ' part #s in this group were consumed in the selected window; all ' + rosterParts.length + ' count toward On hand and Committed.'
@@ -9683,9 +10737,14 @@ function renderMaterials() {
       +'onmouseout="if(this.style.background!==\'rgb(26, 37, 53)\')this.style.background=\'transparent\'">'
       +'<td class="mat-pin-rank" style="padding:8px 10px;color:#5f5e5a;font-size:11px;width:26px;">'+(i+1)+'</td>'
       +'<td class="mat-pin-name" style="padding:8px 10px;overflow:hidden;">'
-        +'<div class="mat-name" style="font-size:12px;font-weight:500;color:'+(isSelected?'#85B7EB':'#e8e6e0')+';font-family:system-ui;display:flex;align-items:center;gap:6px;overflow:hidden;">'
-          +'<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(m.name)+'</span>'
-          +(sg?'<span style="font-size:9px;font-weight:500;padding:1px 5px;border-radius:4px;background:#26215C;color:#AFA9EC;flex-shrink:0;">softgels</span>':'')
+        +'<div class="mat-name" style="font-size:12px;font-weight:500;color:'+(isSelected?'#85B7EB':'#e8e6e0')+';font-family:system-ui;display:flex;align-items:flex-start;gap:6px;overflow:hidden;">'
+          // Wraps to two lines rather than truncating: the name identifies the row, and
+          // vertical space is far cheaper here than horizontal. Clamped at two lines so a
+          // pathological name can't stretch the row, with the full text on hover.
+          +'<span title="'+esc(m.name)+'" style="min-width:0;white-space:normal;overflow:hidden;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">'+esc(m.name)+'</span>'
+          // The badge is the legend for the "sg" in this row's numeric cells — it says
+          // the word the columns don't have room for, so the tooltip spells out the link.
+          +(sg?'<span title="Counted in softgels, not kilograms &mdash; every quantity on this row is a softgel count, shown as &ldquo;sg&rdquo;." style="font-size:9px;font-weight:500;padding:1px 5px;border-radius:4px;background:#26215C;color:#AFA9EC;flex-shrink:0;cursor:help;">softgels</span>':'')
           +(m.isGroup?'<span title="'+esc(partsBadgeTitle)+'" style="font-size:9px;font-weight:500;padding:1px 5px;border-radius:4px;background:#0C2240;color:#85B7EB;flex-shrink:0;">'+partsBadge+'</span>':'')
         +'</div>'
         +(m.isGroup
@@ -9695,14 +10754,15 @@ function renderMaterials() {
           ?'<div style="font-size:10px;font-family:system-ui;margin-top:2px;max-width:250px;line-height:1.6;white-space:normal;">'+_partNumsHTML(rosterParts, dimSet)+'</div>'
           :(m.partNums.length?'<div style="font-size:10px;font-family:system-ui;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+_partNumsHTML(m.partNums)+'</div>':''))
       +'</td>'
-      +'<td style="text-align:right;padding:8px 10px;font-size:12px;font-weight:500;color:#85B7EB;white-space:nowrap;">'+(invLoading?'<span class="inv-skel" style="width:46px;"></span>':fmtStock(m.stock,unit))+'</td>'
-      +'<td style="text-align:right;padding:8px 10px;font-size:12px;color:#888780;white-space:nowrap;">'+(demLoading?'<span class="inv-skel" style="width:42px;"></span>':fmtDemand(m.demand,unit))+'</td>'
-      +'<td style="text-align:center;padding:8px 10px;white-space:nowrap;">'+((invLoading||demLoading)?'<span class="inv-skel" style="width:50px;"></span>':afterBadge(m.afterDemand,m.demand,unit))+'</td>'
+      +'<td style="text-align:right;padding:8px 10px;font-size:12px;font-weight:500;color:#85B7EB;white-space:nowrap;">'+(invLoading?'<span class="inv-skel" style="width:46px;"></span>':fmtStock(m.stock,unitS))+'</td>'
+      +'<td style="text-align:right;padding:8px 10px;font-size:12px;color:#888780;white-space:nowrap;">'+(demLoading?'<span class="inv-skel" style="width:42px;"></span>':fmtDemand(m.demand,unitS))+'</td>'
+      +'<td style="text-align:center;padding:8px 10px;white-space:nowrap;">'+((invLoading||demLoading)?'<span class="inv-skel" style="width:50px;"></span>':afterBadge(m.afterDemand,m.demand,unitS))+'</td>'
       +(invLoading?'<td class="mat-col-cover mat-seam" style="text-align:center;padding:8px 10px;"><span class="inv-skel" style="width:54px;"></span></td>':renderCoverCell(monthsCover))
+      +(invLoading?'<td class="mat-seam" style="text-align:center;padding:8px 10px;"><span class="inv-skel" style="width:56px;"></span></td>':renderExpiryCell(m,unit))
       +'<td style="text-align:right;padding:8px 10px;font-size:12px;font-weight:500;color:#e8e6e0;white-space:nowrap;">'+fmt(m.lastMonth)+'</td>'
       +'<td style="text-align:right;padding:8px 10px;font-size:12px;color:#888780;white-space:nowrap;">'+fmt(m.avg3)+'</td>'
       +'<td style="text-align:right;padding:8px 10px;font-size:12px;color:#888780;white-space:nowrap;">'+fmt(m.avg6)+'</td>'
-      +'<td style="padding:8px 10px;text-align:center;width:110px;">'+(m.spark&&m.spark.length?sparkSVG(m.spark,m.trend):'<span style="color:#5f5e5a;font-size:12px;">—</span>')+'</td>'
+      +'<td style="padding:8px 10px;text-align:center;width:110px;">'+(m.spark&&m.spark.length?sparkSVG(m.spark,m.trend,m.sparkLabels,unit):'<span style="color:#5f5e5a;font-size:12px;">—</span>')+'</td>'
       +'<td style="text-align:right;padding:8px 10px;">'+vsBadge(m.vsPct)+'</td>'
       +'<td style="text-align:right;padding:8px 10px;font-size:12px;color:#888780;white-space:nowrap;">'+fmt(m.totalKg)+'</td>'
       +'</tr>'
@@ -9750,8 +10810,10 @@ function renderMaterials() {
         // is painted by paintShortToggle().
         +'<span style="width:1px;height:24px;background:#2c2c2a;flex-shrink:0;"></span>'
         +'<div id="materialsShortToggle" style="display:flex;gap:2px;padding:3px;background:#1a1d20;border:0.5px solid #2c2c2a;border-radius:8px;">'
-          +'<button type="button" class="seg-btn" data-short="0" onclick="setMaterialsShortOnly(false)" style="'+shortBtnStyle(!materialsShortOnly,false)+'">All <span class="seg-count" id="shortCountAll" style="font-size:10px;opacity:.75;">0</span></button>'
+          +'<button type="button" class="seg-btn" data-short="0" onclick="setMaterialsAllSegment()" style="'+shortBtnStyle(!materialsShortOnly,false)+'">All <span class="seg-count" id="shortCountAll" style="font-size:10px;opacity:.75;">0</span></button>'
           +'<button type="button" class="seg-btn" data-short="1" onclick="setMaterialsShortOnly(true)" style="'+shortBtnStyle(materialsShortOnly,true)+'">Short only <span class="seg-count" id="shortCountShort" style="font-size:10px;opacity:.75;">0</span></button>'
+          +'<button type="button" class="seg-btn" data-fefo="1" onclick="setMaterialsFefoOnly(true)" title="Materials holding a lot that was picked past while an earlier-expiring lot was still usable, and that lot is now expired or expiring within '+FEFO_REVIEW_HORIZON_DAYS+' days with at least '+FEFO_REVIEW_MIN_KG+' kg left." style="'+fefoBtnStyle(materialsFefoOnly)+'">FEFO review <span class="seg-count" id="shortCountFefo" style="font-size:10px;opacity:.75;">0</span></button>'
+          +'<button type="button" class="seg-btn" data-expiring="1" onclick="setMaterialsExpiringOnly(true)" title="Materials holding stock that is already past date, expires within '+EXPIRY_SOON_DAYS+' days, or that first-expiry-first-out says will not be used in time." style="'+expiringBtnStyle(materialsExpiringOnly)+'">Expiring <span class="seg-count" id="shortCountExpiring" style="font-size:10px;opacity:.75;">0</span></button>'
         +'</div>'
       +'</div>'
       +zeroUsageCheckbox
@@ -9773,29 +10835,91 @@ function renderMaterials() {
     +'</div>'
   +'</div>';
 
-  content.innerHTML = pickerHTML
+  // Expiry coverage + exposure across every in-stock lot in the feed (not just the
+  // rows currently listed) — the honest denominator for anything the Expiry column
+  // says. Undated and unreadable are separated because they need different fixes.
+  var _cov = (function(){
+    var t = { lots:0, dated:0, undatedLots:0, undatedKg:0, badLots:0, badKg:0, expiredKg:0, expiredLots:0, kg90:0 }, pn;
+    for (pn in inventoryByPart) {
+      if (!inventoryByPart.hasOwnProperty(pn)) continue;
+      var e = expiryPosition([pn], 0);
+      t.lots += e.lots.length; t.dated += e.dated;
+      t.undatedLots += e.noExpiryLots; t.undatedKg += e.noExpiryKg;
+      t.badLots += e.badDateLots; t.badKg += e.badDateKg;
+      t.expiredKg += e.expiredKg; t.expiredLots += e.expiredLots; t.kg90 += e.kg90;
+    }
+    return t;
+  })();
+  // Two audiences, so two forms. The FULL line belongs where someone is doing expiry
+  // work — the Expiring / FEFO segments — or where coverage is bad enough that a quiet
+  // Expiry column would mislead (it read 44% before the sheet's QUERY was replaced with
+  // FILTER, and that regression must not be able to hide again).
+  //
+  // On the default view the coverage recital is noise: the exposure is already on the
+  // Expiry column and the segment counts. What survives there is only the part with
+  // nowhere else to live — dates the sheet holds but nothing can read. That badge shows
+  // on the affected material's row, which you would have to know to look for. The line
+  // is self-extinguishing: fix the 24 typos and it disappears on its own.
+  var _covHTML = '';
+  if (_cov.lots) {
+    var _pct = (_cov.dated / _cov.lots * 100);
+    var _poorCoverage = _pct < 95;
+    var _full = materialsExpiringOnly || materialsFefoOnly || _poorCoverage;
+    var _badBits = [];
+    // Both counts open the list. Naming a defect without a route to it just moves the
+    // hunt onto the reader — you would have to expand materials one at a time to find
+    // 24 lots among 2,656.
+    if (_cov.badLots > 0) _badBits.push('<span onclick="toggleExpiryIssues()" title="Show the offending cells so they can be fixed in the inventory sheet." style="color:#F09595;border-bottom:1px dotted #6b2020;cursor:pointer;">'
+      + _cov.badLots + ' lot' + (_cov.badLots===1?'':'s') + ' with an unreadable expiry date' + (_expiryIssuesOpen ? ' \u25b4' : ' \u25be') + '</span>');
+    if (_cov.undatedLots - _cov.badLots > 0) _badBits.push('<span onclick="toggleExpiryIssues()" style="border-bottom:1px dotted #444441;cursor:pointer;">'
+      + (_cov.undatedLots - _cov.badLots) + ' with none recorded</span>');
+    var _bits = [], _label;
+    if (_full) {
+      _label = 'Expiry coverage';
+      _bits.push('<span style="color:#cfcdc7;">' + _cov.dated.toLocaleString() + ' of ' + _cov.lots.toLocaleString()
+        + '</span> in-stock lots carry a usable expiry date (' + _pct.toFixed(1) + '%)');
+      if (_cov.expiredKg > 0) _bits.push('<span style="color:#F09595;font-weight:500;">' + Math.round(_cov.expiredKg).toLocaleString()
+        + ' kg past date</span> in ' + _cov.expiredLots + ' lot' + (_cov.expiredLots===1?'':'s'));
+      if (_cov.kg90 > 0) _bits.push('<span style="color:#FAC775;">' + Math.round(_cov.kg90).toLocaleString() + ' kg</span> expiring within 90 days');
+      _bits = _bits.concat(_badBits);
+    } else {
+      _label = 'Expiry data';
+      _bits = _badBits;                 // nothing wrong to report -> no line at all
+    }
+    if (_bits.length) {
+      _covHTML = '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:-4px 0 12px;font-size:11px;color:#888780;font-family:system-ui;">'
+        + '<span style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;">' + _label + '</span>'
+        + '<span>' + _bits.join(' <span style="color:#3a3a38;">&middot;</span> ') + '</span>'
+        + '</div>';
+    }
+  }
+  content.innerHTML = pickerHTML + _covHTML + (_expiryIssuesOpen ? expiryIssuesPanelHTML() : '')
     +'<div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:12px;overflow:hidden;">'
     +'<div style="overflow-x:auto;"><table class="mat-table" style="width:100%;font-family:system-ui;table-layout:fixed;">'
     +'<colgroup>'
     +'<col style="width:28px;">'      // # (rank)
-    +'<col class="matcol-name" style="min-width:170px;">' // Material
-    +'<col style="width:96px;">'      // On hand
-    +'<col style="width:100px;">'     // Committed
-    +'<col style="width:104px;">'     // Available
-    +'<col style="width:96px;">'      // Cover
-    +'<col style="width:104px;">'     // Last month
-    +'<col style="width:96px;">'      // 3-mo avg
-    +'<col style="width:96px;">'      // 6-mo avg
-    +'<col style="width:104px;">'     // 6-mo trend
-    +'<col style="width:96px;">'      // 3<->6 mo
-    +'<col style="width:104px;">'     // 6-mo total
+    +'<col class="matcol-name" style="min-width:220px;">' // Material
+    // Trimmed to give the Material column back the room the Expiry column took. The
+    // figures here are short ("27,164.56 kg" is ~78px at 12px), so these widths were
+    // padding; the name was the column actually starved.
+    +'<col style="width:92px;">'      // On hand
+    +'<col style="width:92px;">'      // Committed
+    +'<col style="width:100px;">'     // Available
+    +'<col style="width:88px;">'      // Cover
+    +'<col style="width:104px;">'     // Expiry
+    +'<col style="width:92px;">'      // Last month
+    +'<col style="width:88px;">'      // 3-mo avg
+    +'<col style="width:88px;">'      // 6-mo avg
+    +'<col style="width:92px;">'      // 6-mo trend
+    +'<col style="width:88px;">'      // 3<->6 mo
+    +'<col style="width:92px;">'      // 6-mo total
     +'</colgroup>'
     +'<thead>'
     // Group row: Material spans both rows; the two cluster labels span their columns.
     +'<tr>'
       +'<th rowspan="2" class="mat-pin-rank" style="padding:8px 10px;width:26px;"></th>'
       +'<th rowspan="2" class="mat-pin-name" style="text-align:left;padding:8px 10px;font-size:10px;color:#888780;font-weight:500;vertical-align:bottom;">Material</th>'
-      +'<th colspan="4" class="mat-seam" style="text-align:center;padding:6px 10px;font-size:10px;color:#85B7EB;font-weight:600;background:#0C2240;">Stock position</th>'
+      +'<th colspan="5" class="mat-seam" style="text-align:center;padding:6px 10px;font-size:10px;color:#85B7EB;font-weight:600;background:#0C2240;">Stock position</th>'
       +'<th colspan="6" style="text-align:center;padding:6px 10px;font-size:10px;color:#888780;font-weight:600;">Consumption history</th>'
     +'</tr>'
     // Column row.
@@ -9804,6 +10928,7 @@ function renderMaterials() {
       +'<th data-tip="Forthcoming demand already on the books — quantity committed or forecast against this material, joined by Part #." onmouseenter="showColTip(this)" onmouseleave="hideColTip()" style="text-align:right;padding:8px 10px;font-size:10px;color:#888780;font-weight:500;white-space:nowrap;cursor:help;"><span style="text-decoration:underline dotted #5f5e5a;text-underline-offset:2px;">Committed</span></th>'
       +'<th data-tip="Net position after demand: on hand minus committed. Surplus (green) when at or above zero, Short (red) when negative. This is the demand-aware number." onmouseenter="showColTip(this)" onmouseleave="hideColTip()" style="text-align:center;padding:8px 10px;font-size:10px;color:#888780;font-weight:500;white-space:nowrap;cursor:help;"><span style="text-decoration:underline dotted #5f5e5a;text-underline-offset:2px;">Available</span></th>'
       +'<th data-tip="Months of stock at the recent burn rate: on hand divided by the 3-month average monthly consumption. Based on PAST usage only — it does NOT subtract committed or forthcoming demand, so check Available for the demand-aware position. Under 1 mo = red, 1–2 mo = amber, 2 mo or more = green." onmouseenter="showColTip(this)" onmouseleave="hideColTip()" class="mat-seam" style="text-align:center;padding:8px 10px;font-size:10px;color:#888780;font-weight:500;white-space:nowrap;cursor:help;"><span style="text-decoration:underline dotted #5f5e5a;text-underline-offset:2px;">Cover</span></th>'
+      +'<th data-tip="Soonest expiry among the lots of this material still holding stock, and how far out it is. The badge underneath shows exposure: stock already past date, or the quantity first-expiry-first-out says will still be here when it expires at the recent run rate. Undated lots are excluded from the projection and called out separately — around 40% of lot rows carry no expiry date." onmouseenter="showColTip(this)" onmouseleave="hideColTip()" class="mat-seam" style="text-align:center;padding:8px 10px;font-size:10px;color:#888780;font-weight:500;white-space:nowrap;cursor:help;"><span style="text-decoration:underline dotted #5f5e5a;text-underline-offset:2px;">Expiry</span></th>'
       +'<th style="text-align:right;padding:8px 10px;font-size:10px;color:#888780;font-weight:500;white-space:nowrap;">Last month</th>'
       +'<th style="text-align:right;padding:8px 10px;font-size:10px;color:#888780;font-weight:500;white-space:nowrap;">3-mo avg</th>'
       +'<th style="text-align:right;padding:8px 10px;font-size:10px;color:#888780;font-weight:500;white-space:nowrap;">6-mo avg</th>'
@@ -10626,7 +11751,7 @@ function renderOrdersSummary() {
     if (filtered.length === 0) {
       bodyHTML = '<div style="background:#1e2124;padding:24px 16px;text-align:center;color:#888780;font-size:12px;font-family:system-ui;font-style:italic;">No blocked orders match the current filter.</div>';
     } else {
-      bodyHTML = '<div style="background:#141618;display:grid;grid-template-columns:'+colTemplate+';gap:10px;font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;padding:8px 16px;">'
+      bodyHTML = '<div class="lbl-hdr" style="background:#141618;display:grid;grid-template-columns:'+colTemplate+';gap:10px;font-size:10px;color:#888780;text-transform:uppercase;letter-spacing:.04em;padding:8px 16px;">'
         +   '<div>Type</div><div>Product</div><div style="text-align:right;">Units</div><div style="text-align:right;">Weeks</div><div>Promise / Notes</div><div>Label Status Update</div>'
         + '</div>'
         + brandNames.map(function(brand){
@@ -10646,7 +11771,7 @@ function renderOrdersSummary() {
               // Age color: muted by default, amber >=6 weeks, red >=12 weeks.
               var weeksColor = weeksNum >= 12 ? '#F09595' : weeksNum >= 6 ? '#FAC775' : '#888780';
               var sep = idx < info.items.length - 1 ? 'border-bottom:0.5px dashed #2c2c2a;' : '';
-              return '<div style="background:#1a1d20;display:grid;grid-template-columns:'+colTemplate+';gap:10px;padding:7px 16px;'+sep+'font-size:12px;font-family:system-ui;align-items:center;">'
+              return '<div class="lbl-row" style="background:#1a1d20;display:grid;grid-template-columns:'+colTemplate+';gap:10px;padding:7px 16px;'+sep+'font-size:12px;font-family:system-ui;align-items:center;">'
                 + '<div><span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px;background:'+typeBg+';color:'+typeColor+';">'+lb.type+'</span></div>'
                 + '<div style="color:#e8e6e0;white-space:normal;word-break:break-word;line-height:1.35;" title="'+esc(r['Product Name']||'')+'">'+esc(r['Product Name']||'')+'</div>'
                 + '<div style="text-align:right;color:#e8e6e0;font-variant-numeric:tabular-nums;">'+num(r['Order Amount']).toLocaleString()+'</div>'
@@ -11005,7 +12130,10 @@ function renderOrdersSummary() {
 }
 
 function renderProcurement() {
-  if (procView === 'materials') { fetchMaterialsIfNeeded(); fetchInventoryIfNeeded(); fetchDemandIfNeeded(); fetchLotIndexIfNeeded(); renderMaterials(); return; }
+  // The unforced calls cover a first visit (nothing loaded yet); refreshStockFeedsIfStale
+  // covers arriving with data that loaded a long time ago, which the loaded flags alone
+  // would happily keep showing forever.
+  if (procView === 'materials') { fetchMaterialsIfNeeded(); fetchInventoryIfNeeded(); fetchDemandIfNeeded(); fetchLotIndexIfNeeded(); refreshStockFeedsIfStale(); renderMaterials(); return; }
   var now = new Date();
   var curQk = getQuarterKey(now);
   var cutoff = new Date(TRACKING_START);
@@ -11212,14 +12340,25 @@ function renderProcurement() {
     var prevYr = nowYr - 1;
     var ytdLabel = now.toLocaleDateString('en-US',{month:'short',day:'numeric'});
 
-    // Sparkline
+    // Sparkline. Bar width is derived from a fixed canvas rather than pinned at 7px, so
+    // this reads at the same weight as the Materials trend column (~13.5px per bar with
+    // today's 7 quarters). It cannot simply copy that 13.5px: this series runs Q1 2025 →
+    // present and gains a bar every quarter, so a fixed width would grow the cell from
+    // 106px now to ~292px within three years, taking that width off the YTD progress
+    // bars beside it for good. Deriving instead keeps the row geometry still and lets
+    // the bars thin as history accumulates — down to SPARK_MIN_BAR, past which the
+    // canvas does grow, because unreadable slivers would be worse than a wider cell.
+    var SPARK_CANVAS = 112, SPARK_GAP = 3, SPARK_MIN_BAR = 4;
+    var qn = cd.qtrs.length || 1;
+    var sparkBarW = Math.max(SPARK_MIN_BAR, (SPARK_CANVAS - SPARK_GAP*(qn-1)) / qn);
+    var sparkTotalW = qn*sparkBarW + SPARK_GAP*(qn-1);
     var sparkMax = Math.max.apply(null, cd.qtrs.map(function(q){return q.units;})) || 1;
     var sparkBars = cd.qtrs.map(function(q) {
       var h = q.units ? Math.max(3, Math.round((q.units/sparkMax)*28)) : 3;
       var isCur = q.key === curQk;
       var col = isCur ? '#378ADD' : (q.units > 0 ? bar26Color : '#2c2c2a');
       var op  = isCur ? '.6' : (q.units > 0 ? '.75' : '.25');
-      return '<div style="width:7px;height:'+h+'px;background:'+col+';opacity:'+op+';border-radius:1px 1px 0 0;align-self:flex-end;"></div>';
+      return '<div style="width:'+sparkBarW.toFixed(1)+'px;height:'+h+'px;background:'+col+';opacity:'+op+';border-radius:1px 1px 0 0;align-self:flex-end;"></div>';
     }).join('');
 
     var header = '<div onclick="toggleProc(\''+sid+'\', '+jsStr(cd.sku)+')" class="proc-row" '
@@ -11249,7 +12388,7 @@ function renderProcurement() {
         +'</div>'
         +(isDes||isNeck ? '<div>'+pctB(cd.ytdUnits, cd.ytd25Units, false)+'</div>' : (cd.ytdPct!==null?'<div>'+pctB(cd.ytdPct, cd.ytdPct25, false)+'</div>':'<div style="height:18px;"></div>'))
       +'</div>'
-      +'<div style="display:flex;align-items:flex-end;gap:2px;height:28px;flex-shrink:0;margin-left:16px;">'+sparkBars+'</div>'
+      +'<div style="display:flex;align-items:flex-end;gap:'+SPARK_GAP+'px;height:28px;flex-shrink:0;margin-left:16px;width:'+sparkTotalW.toFixed(1)+'px;">'+sparkBars+'</div>'
       +'<svg id="pc-'+sid+'" width="12" height="12" viewBox="0 0 12 12" fill="none" style="flex-shrink:0;margin-left:8px;transition:transform .15s;transform:'+(expanded?'rotate(180deg)':'')+'"><polyline points="2,4 6,8 10,4" stroke="#5f5e5a" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     +'</div>';
 
@@ -11507,6 +12646,8 @@ function _filteredMatList() {
   var q = (matSearch||'').toLowerCase().trim();
   return list.filter(function(m){
     if (materialsShortOnly && !matIsShort(m)) return false;
+    if (materialsExpiringOnly && !matIsExpiring(m)) return false;
+    if (materialsFefoOnly && !matHasFefoReview(m)) return false;
     if (!q) return true;
     return (m.name||'').toLowerCase().indexOf(q) !== -1
         || (m.stockParts || m.partNums || []).some(function(p){ return (p||'').toLowerCase().indexOf(q) !== -1; });
@@ -11526,6 +12667,8 @@ function toggleMatExportPopover(e) {
   var sheetsLabel  = '2 sheets: Summary + Monthly Detail';
   var filterBits = [];
   if (materialsShortOnly) filterBits.push('Short only');
+  if (materialsExpiringOnly) filterBits.push('Expiring only');
+  if (materialsFefoOnly) filterBits.push('FEFO review only');
   if (matSearch) filterBits.push('"'+esc(matSearch)+'"');
   var filterLabel = (filterBits.length && filtered.length < allList.length)
     ? ' &middot; <span style="color:#85B7EB;">filtered &middot; '+filterBits.join(' &middot; ')+'</span>'
@@ -11571,12 +12714,14 @@ function exportMaterials() {
   // Note any active filters in the export header so an opened workbook makes clear
   // it's a subset (e.g. "Short only") and not the full material list.
   if (materialsShortOnly) windowLabel += ' · Short only';
+  if (materialsExpiringOnly) windowLabel += ' · Expiring only';
+  if (materialsFefoOnly) windowLabel += ' · FEFO review only';
   if (matSearch) windowLabel += ' · Search "' + matSearch + '"';
 
   var wb = XLSX.utils.book_new();
 
   // Sheet 1: Summary — mirrors the visible table columns.
-  var s1Headers = ['Material','Part Numbers','Unit','On Hand','Committed','Available','Last Month','3-mo Avg','6-mo Avg','3mo vs 6mo (%)','Window Total','Lots'];
+  var s1Headers = ['Material','Part Numbers','Unit','On Hand','Committed','Available','Last Month','3-mo Avg','6-mo Avg','3mo vs 6mo (%)','Window Total','Lots','Next Expiry','Days To Expiry','Expired','Expiring 90d','At Risk (FEFO)','Undated'];
   var s1Rows = [
     ['DTF Operations Center — Materials Export'],
     ['Window: '+windowLabel+' · Exported: '+dateStr],
@@ -11598,7 +12743,15 @@ function exportMaterials() {
       Math.round(m.avg6 || 0),
       m.avg6 > 0 ? parseFloat(m.vsPct.toFixed(1)) : '',
       Math.round(m.totalKg || 0),
-      m.lotCount || 0
+      m.lotCount || 0,
+      // Expiry block mirrors the Expiry column on screen. Blank rather than 0 where
+      // there is nothing to say, so a real 0 stays distinguishable from "no data".
+      (m.expiry && m.expiry.soonest) ? _matExpDateStr(m.expiry.soonest) : '',
+      (m.expiry && m.expiry.soonestDays != null) ? m.expiry.soonestDays : '',
+      (m.expiry && m.expiry.expiredKg > 0) ? Math.round(m.expiry.expiredKg) : '',
+      (m.expiry && m.expiry.kg90 > 0) ? Math.round(m.expiry.kg90) : '',
+      (m.expiry && m.expiry.riskKg >= EXPIRY_RISK_MIN_KG) ? Math.round(m.expiry.riskKg) : '',
+      (m.expiry && m.expiry.noExpiryKg > 0) ? Math.round(m.expiry.noExpiryKg) : ''
     ]);
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s1Rows), 'Summary');
@@ -11618,6 +12771,81 @@ function exportMaterials() {
     s2Rows.push(row);
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(s2Rows), 'Monthly Detail');
+
+  // Sheet 3: every in-stock lot, first-expiry-first-out within each material — the
+  // sheet you print for a floor walk. No row cap here (the on-screen table caps at
+  // MAT_LOT_CAP); an export that quietly dropped lots would be worse than a long one.
+  var s3Headers = ['Material','Part #','Lot #','On Hand','Unit','Expires','Days Left','Status','Location','Supplier','Supplier Batch','Received'];
+  var s3Rows = [
+    ['Inventory lots by expiry'],
+    ['Window: '+windowLabel+' · Exported: '+dateStr+' · Ordered first-expiry-first-out within each material; lots with no usable date last.'],
+    [],
+    s3Headers
+  ];
+  var _s3n = 0;
+  matList.forEach(function(m){
+    var e = m.expiry;
+    if (!e || !e.lots.length) return;
+    var unitM = matUnit(m.name);
+    e.lots.slice().sort(function(a,b){
+      if (a.exp == null && b.exp == null) return b.qty - a.qty;
+      if (a.exp == null) return 1;
+      if (b.exp == null) return -1;
+      return a.exp - b.exp;
+    }).forEach(function(L){
+      var state = L.exp == null ? (L.expRaw ? 'Unreadable date' : 'No date')
+                : L.days < 0 ? 'EXPIRED'
+                : L.days <= 30 ? 'Within 30 days'
+                : L.days <= EXPIRY_SOON_DAYS ? 'Within 90 days' : 'OK';
+      s3Rows.push([
+        m.name, L.part, L.lot,
+        Math.round(L.qty * 100) / 100, unitM,
+        L.exp == null ? (L.expRaw || '') : _matExpDateStr(L.exp),
+        L.exp == null ? '' : L.days,
+        state, L.loc, L.supplier, L.batch, L.received
+      ]);
+      _s3n++;
+    });
+  });
+  if (_s3n) {
+    var ws3 = XLSX.utils.aoa_to_sheet(s3Rows);
+    ws3['!cols'] = [{wch:42},{wch:10},{wch:12},{wch:11},{wch:8},{wch:12},{wch:10},{wch:16},{wch:34},{wch:22},{wch:20},{wch:12}];
+    ws3['!merges'] = [{s:{r:0,c:0},e:{r:0,c:s3Headers.length-1}},{s:{r:1,c:0},e:{r:1,c:s3Headers.length-1}}];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Lots By Expiry');
+  }
+
+  // Sheet 4: the FEFO review list — the floor walk. Always the tight definition
+  // (expired or expiring within the horizon, at least the kg floor), never the full
+  // stranded set, which is 757 lots of mostly harmless high-turnover churn.
+  var _fefoX = computeFefoMisses();
+  if (_fefoX.review.length) {
+    var s4Headers = ['Material','Part #','Lot #','On Hand','Expires','Days Left','State','Times Skipped','Last Skipped','Location','Supplier','Supplier Batch'];
+    var s4Rows = [
+      ['FEFO review — lots picked past while still usable'],
+      ['Exported: '+dateStr+' · '+_fefoX.review.length+' lots · '+Math.round(_fefoX.reviewKg).toLocaleString()+' kg'
+        + ' · expired or expiring within '+FEFO_REVIEW_HORIZON_DAYS+' days with at least '+FEFO_REVIEW_MIN_KG+' kg remaining'],
+      ['Reconstructed from the pick sheet: a lot counts as skipped when a later-expiring lot of the same part was picked while this one was received, in date and in stock.'
+        + ' Under-reports (only lots still in the inventory feed can be compared) and does not know about write-offs or holds. Legitimate reasons to skip a lot exist — review, do not assume.'],
+      [],
+      s4Headers
+    ];
+    _fefoX.review.forEach(function(r){
+      s4Rows.push([
+        r.material, r.part, r.lot,
+        Math.round(r.qty * 100) / 100,
+        r.exp == null ? '' : _matExpDateStr(r.exp),
+        r.days == null ? '' : r.days,
+        r.days == null ? '' : (r.days < 0 ? 'EXPIRED' : r.days <= 30 ? 'Within 30 days' : 'Within 90 days'),
+        r.skips,
+        r.lastSkip ? _matExpDateStr(r.lastSkip) : '',
+        r.loc, r.supplier, r.batch
+      ]);
+    });
+    var ws4 = XLSX.utils.aoa_to_sheet(s4Rows);
+    ws4['!cols'] = [{wch:42},{wch:10},{wch:12},{wch:11},{wch:12},{wch:10},{wch:15},{wch:14},{wch:13},{wch:30},{wch:22},{wch:20}];
+    ws4['!merges'] = [{s:{r:0,c:0},e:{r:0,c:s4Headers.length-1}},{s:{r:1,c:0},e:{r:1,c:s4Headers.length-1}},{s:{r:2,c:0},e:{r:2,c:s4Headers.length-1}}];
+    XLSX.utils.book_append_sheet(wb, ws4, 'FEFO Review');
+  }
 
   var fileName = 'DTF_Materials_'+now.toISOString().split('T')[0]+'.xlsx';
   XLSX.writeFile(wb, fileName);
