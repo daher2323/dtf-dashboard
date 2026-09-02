@@ -13,7 +13,13 @@
   /* --shell-pad is the single source for the page gutter: .mat-panel sizes itself
      to the viewport minus this, and the gutter differs per breakpoint. Override the
      variable, not the padding, or the panel silently goes over- or under-wide. */
-  .shell { --shell-pad: 1.5rem; max-width: 1400px; margin: 0 auto; padding: var(--shell-pad); }
+  /* --shell-pad-top is separate from --shell-pad on purpose. The gap under the sub-bar
+     was the full 1.5rem gutter plus the sub-bar's own 8px, which read as a gulf between
+     the tab row and the first control under it. Only the TOP wanted trimming: the
+     horizontal value is load-bearing (see .mat-panel's width calc above), so it must
+     stay 1.5rem. Each breakpoint that overrides --shell-pad sets this alongside it. */
+  .shell { --shell-pad: 1.5rem; --shell-pad-top: 14px; max-width: 1400px; margin: 0 auto;
+           padding: var(--shell-pad-top) var(--shell-pad) var(--shell-pad); }
 
   .app-bar { display: flex; align-items: stretch; background: #141618; border-bottom: 0.5px solid #2c2c2a; padding: 0; min-height: 68px; position: sticky; top: 0; z-index: 100; }
   .brand-wrap { display: flex; align-items: center; gap: 12px; padding: 10px 20px 10px 4px; margin-right: 16px; border-right: 0.5px solid #2c2c2a; flex-shrink: 0; cursor: pointer; }
@@ -280,7 +286,7 @@
     .lbl-row > div:nth-child(3) { grid-column: 1; text-align: left !important; font-weight: 500; }  /* units */
     .lbl-row > div:nth-child(4) { grid-column: 2; text-align: right !important; }                    /* weeks */
     .lbl-row > div:nth-child(5), .lbl-row > div:nth-child(6) { grid-column: 1 / -1; font-size: 11px; }
-    .shell { --shell-pad: 8px; }
+    .shell { --shell-pad: 8px; --shell-pad-top: 8px; }
     .app-bar { padding: 0 8px; min-height: 56px; }
     /* App bar → two rows on phones: [logo · Refresh/Admin] on top, the full-width
        scrollable tab bar below. Single-row, the tabs get squeezed to ~0 width
@@ -598,7 +604,7 @@
      Keyed on HEIGHT, not width, so a desktop browser window is never affected —
      932px wide is an ordinary desktop width and must keep the desktop layout. */
   @media (max-height: 500px) and (orientation: landscape) {
-    .shell { --shell-pad: 10px; padding-bottom: 16px; }
+    .shell { --shell-pad: 10px; --shell-pad-top: 10px; padding-bottom: 16px; }
 
     /* Chrome: 68px of app-bar + 44px of sub-bar was a quarter of the screen,
        permanently pinned. Compacted to ~42px + ~34px. The sub-bar's sticky
@@ -1019,7 +1025,7 @@ var demandLoaded = false;    // true once a successful demand fetch has populate
 // on re-navigation and page refresh, instead of re-waiting on Google's slow
 // published-CSV endpoint (the inventory sheet can take 15-60s to regenerate cold).
 var STOCK_CACHE_TTL = 10 * 60 * 1000; // 10 min — inventory/demand change slowly
-var INVENTORY_CACHE_KEY = 'dtf_inventory_cache_v5';  // v5: lotIndex now also carries archived (spent) lots; v4 discarded pre-size-guard payloads
+var INVENTORY_CACHE_KEY = 'dtf_inventory_cache_v7';  // v7: carries archiveLots, so the broken-archive warning survives a cache hit; v6 put `category` on part records for Raw vs Flavors; v5 added archived lots to lotIndex; v4 discarded pre-size-guard payloads
 var DEMAND_CACHE_KEY = 'dtf_demand_cache_v1';
 var lotIndex = {};           // lot number -> { combined, brand, product } populated from the Lot # reference sheets
 var lotIndexLoaded = false;
@@ -1229,6 +1235,26 @@ var matSearch = '';
 var matShowZeroUsage = false; // when true, also show on-hand ingredients with zero usage in the current window (mirrors showZeroDes on Jars/Bottles/etc.)
 var materialsFefoOnly = false;      // Materials toolbar "FEFO review" segment: only materials holding a lot that keeps getting picked past while at risk.
 var materialsExpiringOnly = false; // Materials toolbar "Expiring" segment: only rows with expired stock, stock dated within EXPIRY_SOON_DAYS, or FEFO risk.
+// Materials toolbar category axis: 'all' | 'raw' | 'flavor'. Orthogonal to the section
+// segments below — pick Flavors, then Short only, and you get short flavours.
+// Second-level view inside Procurement > Materials. 'stock' is the buying screen —
+// consumption and on-hand, filtered by category and shortage. 'lothealth' is the
+// inventory screen — FEFO and expiry, per lot.
+//
+// They are separate VIEWS, not filters, and that is the whole point: the section filters
+// are scoped to lothealth in filterMaterials, so nothing you do there can leave the stock
+// table filtered down. Clicking back always shows the full list, with no state to clear.
+var matView = 'stock';
+// Expiring view only: narrow to lots that are ALSO being repeatedly walked past on the
+// pick sheet. This is what used to be its own "Lots at risk" segment — measured
+// 2026-09-02, its 31 lots are a strict subset of the 597 expired-or-within-90-days lots,
+// so it was never a different set, only Expiring with a pick-discipline cause attached.
+var matSkippedOnly = false;
+// The stock view's own zero-usage preference. Lot Health force-ticks the checkbox (a
+// stranded lot usually belongs to a material nothing has drawn lately), which would
+// otherwise follow you back onto the buying screen.
+var _matZeroUsageStock = false;
+var matCategory = 'all';
 var materialsShortOnly = false; // Materials toolbar "Short only" toggle: hide rows whose Available is not Short (afterDemand >= 0). Persists across re-renders and sub-tab switches.
 var matSummaryView = 'quarter'; // expanded-view consumption summary breakdown: 'quarter' | 'customer'
 var drillCustomer = null; // Materials "By customer" → product drill: selected customer name, or null while showing the customer list. Reset when a different material is opened; cleared by the Back button.
@@ -2272,12 +2298,24 @@ function parseInventory(text) {
   try {
     var rows = parseCSVMultiline(text);
     var byPart = {};
+    var _catTally = {};
     inventoryLotIndex = {};
     rows.forEach(function(r){
       var part = (r['DTF Part #'] || '').trim();
       if (!part) return;
       if (!byPart[part]) byPart[part] = { partNum: part, stock: 0, material: (r['Material Name'] || '').trim(), lots: 0, lotRows: [] };
       var p = byPart[part];
+      // Category is per PART, but the feed carries it per LOT ROW, and 9 parts currently
+      // disagree with themselves (e.g. 20-742 Cherry Flavor: five rows say 2, one says 1).
+      // Tally and take the majority rather than first- or last-write-wins, so one stray
+      // cell cannot move a material between tabs. A tie resolves to flavour, which is the
+      // right call on the only tied part today (20-751 Green Apple Flavor) — but these are
+      // data-entry slips and belong fixed on the sheet, not arbitrated here.
+      var catRaw = (r['Category (1 Raw)(2 Flavor)'] || '').trim();
+      if (catRaw === '1' || catRaw === '2') {
+        if (!_catTally[part]) _catTally[part] = { '1': 0, '2': 0 };
+        _catTally[part][catRaw]++;
+      }
       var qty = num(r['Current Stock']);
       p.stock += qty;
       var lotNo = (r['DTF Lot #'] || '').trim();
@@ -2315,8 +2353,47 @@ function parseInventory(text) {
         });
       }
     });
+    // Majority per part; a tie resolves to flavour (see the tally above). Written ONTO
+    // the byPart record rather than into a map beside it, because that record is what
+    // gets cached in sessionStorage — a separate map was silently lost on every
+    // cache-hydrated load, leaving every material to fall to the Raw default and the
+    // Flavors count reading 0 about half the time.
+    Object.keys(_catTally).forEach(function(pk){
+      if (!byPart[pk]) return;
+      var t = _catTally[pk];
+      byPart[pk].category = (t['2'] >= t['1']) ? '2' : '1';
+    });
     return byPart;
   } catch (e) { return {}; }
+}
+
+// The category the inventory feed actually states for a material row: the first of its
+// part #s that has one. Unambiguous in practice — checked 2026-09-02: zero SKU groups
+// span both categories, so no group has to be arbitrated. Returns '' when NOTHING is
+// stated, which is 56 of 1,021 consumed materials today: all of them consumed but absent
+// from the inventory sheet, so there is no row to carry a category.
+//
+// Kept honest — '' means unknown, never raw — so a caller that needs to tell the two
+// apart still can. The Raw default lives in matCategoryEffective, one layer up.
+function matCategoryOf(m) {
+  var parts = (m && (m.stockParts || m.partNums)) || [];
+  for (var i = 0; i < parts.length; i++) {
+    var rec = inventoryByPart[parts[i]];
+    if (rec && rec.category) return rec.category;
+  }
+  return '';
+}
+// What the toolbar sorts on. Uncategorised falls to Raw, so Raw + Flavors sums to All
+// and nothing hides between the tabs. The cost is that "we have not classified this yet"
+// and "this is a raw material" now look identical on screen — matCategoryOf above is the
+// way back to that distinction if it is ever needed.
+function matCategoryEffective(m) {
+  return matCategoryOf(m) || '1';
+}
+function matMatchesCategory(m) {
+  if (matCategory === 'all') return true;
+  var c = matCategoryEffective(m);
+  return matCategory === 'raw' ? c === '1' : c === '2';
 }
 
 // A truncated or half-generated CSV parses fine — it is merely short — and the old
@@ -2378,6 +2455,13 @@ function _inventoryLooksComplete(parsed, current) {
   var have = Object.keys(current || {}).length;
   return !(have && n < have * 0.8);
 }
+// Consecutive rejected inventory payloads. Reset only on SUCCESS — deliberately not on
+// re-entry, or the 5-minute refresh timer would hand back a fresh burst of retries every
+// cycle and a genuinely dead feed would be polled forever. Once the burst is spent, each
+// later cycle gets its single ordinary attempt, which is enough to recover on its own.
+var _invRejects = 0;
+var INVENTORY_MAX_REJECT_RETRIES = 4;
+
 function fetchInventoryIfNeeded(force) {
   if (inventoryLoaded && !force) return;
   if (_invFetching) return;   // a cold inventory read can take ~60s; never stack them
@@ -2405,7 +2489,13 @@ function fetchInventoryIfNeeded(force) {
       // leaves untouched — so replacing the data has to drop them explicitly or the
       // stale computation outlives the stale input.
       _fefoInvalidate();
-      try { sessionStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify({ byPart: parsed, lotIndex: inventoryLotIndex, ts: Date.now() })); } catch(e) {}
+      // archiveLots rides along because it is derived at merge time and read much later.
+      // Left out, a cache-hydrated load restored the DEGRADED lotIndex (archive feed
+      // returned nothing) while _archiveLots reverted to null, so the "archived lots not
+      // loaded" warning stayed hidden — the coverage drop then read as fewer mispicks,
+      // which is the exact misreading that warning exists to prevent.
+      try { sessionStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify({ byPart: parsed, lotIndex: inventoryLotIndex, archiveLots: _archiveLots, ts: Date.now() })); } catch(e) {}
+      _invRejects = 0;
       if (mainSection === 'procurement' && procView === 'materials') renderMaterials();
     } else {
       inventoryLotIndex = keepIndex;
@@ -2413,6 +2503,29 @@ function fetchInventoryIfNeeded(force) {
       console.warn('Inventory fetch rejected: ' + Object.keys(parsed || {}).length
         + ' parts parsed (need at least ' + INVENTORY_MIN_PARTS + ' and 80% of the '
         + Object.keys(inventoryByPart || {}).length + ' already held). Keeping existing data.');
+      // Try again straight away rather than waiting out the 5-minute refresh timer.
+      //
+      // The published inventory tab intermittently serves its header row plus a single row
+      // of #VALUE!/#N/A instead of the data — 222 bytes against 372,481 — while the sheet
+      // itself renders perfectly, because Google evaluates the publish snapshot separately
+      // from the interactive one. Measured 2026-09-02 across two batches of 20 fetches:
+      // 50% then 75% good, fluctuating, and identical on the stable and cache-busted URLs,
+      // so this is the publish pipeline, not caching. The archive tab beside it was 8/8
+      // identical, so it is this tab's IMPORTRANGE.
+      //
+      // One fetch with no retry meant a fresh load had roughly even odds of showing
+      // skeletons for five minutes. Four quick retries take the chance of drawing nothing
+      // but bad snapshots from ~50% to ~3%. Bounded so a genuinely dead feed cannot spin,
+      // and only ever fires where a payload was REJECTED — a successful fetch resets the
+      // counter, so this cannot mask a feed that is merely slow.
+      if (_invRejects < INVENTORY_MAX_REJECT_RETRIES) {
+        _invRejects++;
+        setTimeout(function(){ fetchInventoryIfNeeded(true); }, 1200 * _invRejects);
+      } else {
+        console.warn('Inventory feed returned an unusable payload ' + _invRejects
+          + ' times running. Check that the inventory tab of Materials_Dashboard_View still'
+          + ' resolves — the published CSV is serving errors where the sheet reads fine.');
+      }
     }
   }).catch(function(e){
     // Belt and braces: an in-flight latch that never clears would silently disable
@@ -2911,7 +3024,6 @@ function computeFefoOps() {
 // the day-to-day monitoring surface: it names decisions made in the last few hours, while
 // material is still on the floor and a swap is still possible. Lots at risk is a remediation
 // list — real work, but work that keeps. Landing on the queue rather than the backlog.
-var fefoOpsView = true;
 // 'day' | 'week' | 'month' | 'quarter'. Daily by default because this is a monitoring view
 // before it is a reporting one: a mispick caught the same day can still be put right — the
 // older lot is on the shelf and the run is in front of you — while by Thursday a Monday miss
@@ -2984,7 +3096,6 @@ function _fefoOpsRerender() {
   renderMaterials();
   requestAnimationFrame(function(){ window.scrollTo(0, y); });
 }
-function setFefoOpsView(v) { fefoOpsView = !!v; renderMaterials(); }
 function setFefoOpsGran(g) { fefoOpsGran = g; fefoOpsAnchor = null; renderMaterials(); }
 // Anchor one period away from the current one, in the current granularity.
 function _fefoOpsStep(delta) {
@@ -4045,7 +4156,7 @@ function _loadStockCaches() {
     var ri = sessionStorage.getItem(INVENTORY_CACHE_KEY);
     // Same size test on the way in: a cache is only as trustworthy as the fetch that
     // wrote it, and a gutted payload must not be able to survive a reload.
-    if (ri) { var ci = JSON.parse(ri); if (ci && ci.byPart && (Date.now() - (ci.ts || 0)) < STOCK_CACHE_TTL && _inventoryLooksComplete(ci.byPart, null)) { inventoryByPart = ci.byPart; inventoryLotIndex = ci.lotIndex || {}; inventoryLoaded = true; _stockHydratedFromCache = true; } }
+    if (ri) { var ci = JSON.parse(ri); if (ci && ci.byPart && (Date.now() - (ci.ts || 0)) < STOCK_CACHE_TTL && _inventoryLooksComplete(ci.byPart, null)) { inventoryByPart = ci.byPart; inventoryLotIndex = ci.lotIndex || {}; inventoryLoaded = true; _stockHydratedFromCache = true; if (typeof ci.archiveLots === 'number') _archiveLots = ci.archiveLots; } }
   } catch(e) {}
   try {
     var rd = sessionStorage.getItem(DEMAND_CACHE_KEY);
@@ -5489,7 +5600,10 @@ function renderSubBar() {
       + '<button onclick="setProcView(\'lids\')" style="'+navBtnStyle(pl)+'">Lids</button>'
       + '<button onclick="setProcView(\'desiccants\')" style="'+navBtnStyle(pd)+'">Desiccants</button>'
       + '<button onclick="setProcView(\'neckbands\')" style="'+navBtnStyle(pn)+'">Neckbands</button>'
-      + '</div>';
+      + '</div>'
+      // Materials only — matWindow scopes consumption history, which the container tabs
+      // do not have. margin-left:auto inside the group pushes it to the right edge.
+      + (pm ? matWindowGroupHTML() : '');
   } else if (mainSection === 'orders') {
     sb.innerHTML =
       salesToggle
@@ -11487,21 +11601,23 @@ function expiringBtnStyle(active) {
 // Repaint the three segment buttons to reflect the active filter. Called at the end
 // of every Materials render (via filterMaterials) so the highlight survives re-render.
 // The segments are mutually exclusive, so "All" is simply neither flag set.
+// Repaint the section toggles in place, so filterMaterials can refresh highlighting
+// without a full re-render. Short only and the inventory sections now live in two
+// separate wrappers (see the toolbar), so both are walked; the category buttons are
+// painted by renderMaterials itself, since changing category re-renders anyway.
 function paintShortToggle() {
-  var wrap = document.getElementById('materialsShortToggle');
-  if (!wrap) return;
-  var btns = wrap.getElementsByClassName('seg-btn');
-  var i, b;
-  for (i = 0; i < btns.length; i++) {
-    b = btns[i];
-    if (b.getAttribute('data-fefo') === '1') {
-      b.style.cssText = fefoBtnStyle(materialsFefoOnly);
-    } else if (b.getAttribute('data-expiring') === '1') {
-      b.style.cssText = expiringBtnStyle(materialsExpiringOnly);
-    } else if (b.getAttribute('data-short') === '1') {
-      b.style.cssText = shortBtnStyle(materialsShortOnly, true);
-    } else {
-      b.style.cssText = shortBtnStyle(!materialsShortOnly && !materialsExpiringOnly && !materialsFefoOnly, false);
+  var wraps = [document.getElementById('materialsShortToggle'),
+               document.getElementById('materialsSectionToggle'),
+               document.getElementById('materialsSkippedToggle')];
+  for (var w = 0; w < wraps.length; w++) {
+    if (!wraps[w]) continue;
+    var btns = wraps[w].getElementsByClassName('seg-btn');
+    for (var i = 0; i < btns.length; i++) {
+      var b = btns[i];
+      if (b.getAttribute('data-fefo') === '1')          b.style.cssText = fefoBtnStyle(materialsFefoOnly);
+      else if (b.getAttribute('data-expiring') === '1') b.style.cssText = expiringBtnStyle(materialsExpiringOnly);
+      else if (b.getAttribute('data-short') === '1')    b.style.cssText = shortBtnStyle(materialsShortOnly, true);
+      else if (b.getAttribute('data-skipped') === '1')  b.style.cssText = shortBtnStyle(matSkippedOnly, true);
     }
   }
 }
@@ -11510,17 +11626,82 @@ function paintShortToggle() {
 // time-window buttons). Persists across sub-tab switches — never reset elsewhere.
 function setMaterialsShortOnly(v) {
   materialsShortOnly = !!v;
-  if (materialsShortOnly) { materialsExpiringOnly = false; materialsFefoOnly = false; }   // exclusive segments
+  // Deliberately does NOT clear the section flags any more. Short only lives on the
+  // stock view and FEFO review / Expiring on Lot Health, so they no longer compete —
+  // clearing them here would just make Lot Health forget which section you were on.
   trackEvent('materials_filter_change', { filter: 'short_only', value: materialsShortOnly ? 'short' : 'all' });
   window._selectedMaterial = null;
   renderMaterials();
 }
 
-function setMaterialsAllSegment() {
-  materialsShortOnly = false;
-  materialsExpiringOnly = false;
-  materialsFefoOnly = false;
-  trackEvent('materials_filter_change', { filter: 'short_only', value: 'all' });
+// Span of the consumption feed, for the window buttons and the All-time label. Read
+// straight from materialsData (a module global) so the SUB-BAR can build the window
+// group without waiting on renderMaterials — the two used to derive it separately and
+// would have drifted the moment one changed.
+function matDataSpan() {
+  var ds = [], i;
+  for (i = 0; i < materialsData.length; i++) if (materialsData[i].date) ds.push(materialsData[i].date);
+  if (!ds.length) return { min: null, max: null, label: '', has12mo: false };
+  var mn = new Date(Math.min.apply(null, ds)), mx = new Date(Math.max.apply(null, ds));
+  function f(d) { return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }); }
+  return { min: mn, max: mx, label: f(mn) + '–' + f(mx),
+           has12mo: (Date.now() - mn) >= 1000 * 60 * 60 * 24 * 365 };
+}
+
+// The consumption window, rendered into the Procurement sub-bar beside the Materials /
+// Jars / Bottles tabs rather than inside the page. It is set once and left alone, so a
+// row of its own in the content pushed the table down for a control nobody touches.
+function matWindowGroupHTML() {
+  var sp = matDataSpan();
+  // The same snap renderMaterials applies. Repeated here because the sub-bar is painted
+  // FIRST: without it, a stored matWindow of 12 with under a year of data would render a
+  // group where nothing is highlighted, since the 12-month button is not drawn at all.
+  if (matWindow === 12 && !sp.has12mo) matWindow = 6;
+  return '<div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end;">'
+    + (matWindow === 0 && sp.label
+        ? '<span style="font-size:11px;color:#5f5e5a;font-family:system-ui;">' + esc(sp.label) + '</span>'
+        : '')
+    + '<div style="display:flex;gap:2px;padding:3px;background:#1a1d20;border:0.5px solid #2c2c2a;border-radius:8px;">'
+      + '<button onclick="setMatWindow(6)" style="' + navBtnStyle(matWindow === 6) + '">Past 6 months</button>'
+      + (sp.has12mo ? '<button onclick="setMatWindow(12)" style="' + navBtnStyle(matWindow === 12) + '">Past 12 months</button>' : '')
+      + '<button onclick="setMatWindow(0)" style="' + navBtnStyle(matWindow === 0) + '">All time</button>'
+    + '</div>'
+  + '</div>';
+}
+
+// Must repaint the sub-bar as well as the content: the buttons now live up there, so
+// renderMaterials alone would move the data and leave the highlight behind.
+function setMatWindow(n) {
+  matWindow = n;
+  window._selectedMaterial = null;
+  renderSubBar();
+  renderMaterials();
+}
+
+function setMatView(v) {
+  if (v === matView) return;
+  if (v === 'lothealth') {
+    _matZeroUsageStock = matShowZeroUsage;
+    // Land on Pick opportunities: it is the day-to-day screen, and it is listed first.
+    // Without this, arriving with both section flags false would render the plain table —
+    // i.e. the stock view under a Lot Health heading.
+    if (!materialsFefoOnly && !materialsExpiringOnly) {
+      materialsFefoOnly = true;
+      matInlineTab = 'lots';
+    }
+    matShowZeroUsage = true;
+  } else {
+    matShowZeroUsage = _matZeroUsageStock;
+  }
+  matView = v;
+  trackEvent('materials_view_change', { view: v });
+  window._selectedMaterial = null;
+  renderMaterials();
+}
+
+function setMatCategory(c) {
+  matCategory = c;
+  trackEvent('materials_filter_change', { filter: 'category', value: c });
   window._selectedMaterial = null;
   renderMaterials();
 }
@@ -11528,13 +11709,10 @@ function setMaterialsAllSegment() {
 function setMaterialsFefoOnly(v) {
   materialsFefoOnly = !!v;
   if (materialsFefoOnly) {
-    // Always arrive on the pick log. fefoOpsView is sticky within a session, so without this a
-    // trip to Lots at risk an hour ago decides what the next person sees when they open FEFO
-    // review — and the whole point of the segment is to land on today's queue.
-    fefoOpsView = true;
     matInlineTab = 'lots';        // ditto — the evidence lives on the Lots tab
-    materialsShortOnly = false;
-    materialsExpiringOnly = false;
+    materialsExpiringOnly = false;   // the two Lot Health sections stay exclusive
+    // materialsShortOnly is left alone: it belongs to the stock view, and silently
+    // clearing it would drop the buying screen's shortage filter behind the user's back.
     // Same reasoning as the Expiring segment: a stranded lot often belongs to a
     // material nothing has drawn recently, and those rows live behind the
     // zero-usage checkbox. Tick it visibly rather than filter past it.
@@ -11545,11 +11723,20 @@ function setMaterialsFefoOnly(v) {
   renderMaterials();
 }
 
+function setMaterialsSkippedOnly(v) {
+  matSkippedOnly = !!v;
+  matInlineTab = 'lots';   // the evidence is the lot list, same as the segment it replaces
+  trackEvent('materials_filter_change', { filter: 'skipped_only', value: matSkippedOnly ? 'skipped' : 'all' });
+  window._selectedMaterial = null;
+  renderMaterials();
+}
+
 function setMaterialsExpiringOnly(v) {
   materialsExpiringOnly = !!v;
   if (materialsExpiringOnly) {
     matInlineTab = 'lots';        // you filtered for expiry; that is the tab you want
-    materialsShortOnly = false; materialsFefoOnly = false;   // exclusive segments
+    materialsFefoOnly = false;   // the two Lot Health sections stay exclusive
+    // materialsShortOnly untouched — see setMaterialsFefoOnly.
     // Reach the zero-usage rows too. Measured on the live feed: with them hidden the
     // page shows 11,185 kg expired / 3,143 kg at risk; with them shown it is 17,745
     // and 25,613 — 87% of the at-risk tonnage is material nothing has drawn in six
@@ -11599,7 +11786,11 @@ function filterMaterials() {
   // Segment badges reflect every OTHER filter (time window + zero-usage already
   // baked into matList, plus search) but never the short toggle itself, so toggling
   // it changes what's shown, not the counts.
-  var countAll = 0, countShort = 0, countExpiring = 0, countFefo = 0;
+  var countShort = 0, countExpiring = 0, countSkipped = 0;
+  // Category counts are gated by search AND the active section, mirroring how the section
+  // counts are gated by search AND the active category: each badge answers "how many would
+  // I get if I clicked this", never "how many exist in total".
+  var catAll = 0, catRaw = 0, catFlavor = 0;
   matList.forEach(function(m, i) {
     var row = document.getElementById('mat-row-'+i);
     var ir = document.getElementById('mat-inline-row-'+i);
@@ -11613,22 +11804,51 @@ function filterMaterials() {
     var shortRow = matIsShort(m);
     var expiringRow = matIsExpiring(m);
     var fefoRow = matHasFefoReview(m);
-    if (searchMatch) { countAll++; if (shortRow) countShort++; if (expiringRow) countExpiring++; if (fefoRow) countFefo++; }
+    // Inert on Lot Health. The control is hidden there (that view is read whole — you
+    // want every lot at risk, not the flavours among them), and leaving the filter live
+    // but invisible would let a Flavors selection made on the buying screen silently
+    // narrow the at-risk list. Pick opportunities never saw it anyway: the log replaces
+    // the table and only the search reaches it.
+    var catOK = (matView === 'lothealth') || matMatchesCategory(m);
+    // Scoped by view. In 'stock' only Short only can hide a row, so FEFO review and
+    // Expiring cannot strand the buying screen at 29 rows; in 'lothealth' only the
+    // section filters apply, so a shortage filter left on elsewhere cannot narrow the
+    // at-risk list either.
+    var sectionOK = (matView === 'lothealth')
+      // Skipped only narrows Expiring; it is an AND, never a replacement, so the tab can
+      // never show a row that is not expiring. materialsFefoOnly needs no row test: Pick
+      // opportunities replaces the table with the pick log, so there are no rows to gate.
+      ? (!materialsExpiringOnly || (expiringRow && (!matSkippedOnly || fefoRow)))
+      : (!materialsShortOnly || shortRow);
+    if (searchMatch && catOK) {
+      if (shortRow) countShort++;
+      if (expiringRow) countExpiring++;
+      // The Skipped only badge counts the intersection, matching what clicking it shows.
+      if (expiringRow && fefoRow) countSkipped++;
+    }
+    if (searchMatch && sectionOK) {
+      catAll++;
+      if (matCategoryEffective(m) === '2') catFlavor++; else catRaw++;
+    }
     // Short gate stacks AFTER search: visible only if it passes search AND (short
     // filter off OR the row is short). Rows stay in the DOM (just hidden), so the
     // rank numbers baked into each row are preserved.
-    var visible = searchMatch && (!materialsShortOnly || shortRow) && (!materialsExpiringOnly || expiringRow) && (!materialsFefoOnly || fefoRow);
+    var visible = searchMatch && catOK && sectionOK;
     if (row) row.style.display = visible ? '' : 'none';
     if (ir) ir.style.display = (visible && window._selectedMaterial===m.name) ? '' : 'none';
   });
-  var elAll = document.getElementById('shortCountAll');
   var elShort = document.getElementById('shortCountShort');
   var elExp = document.getElementById('shortCountExpiring');
-  var elFefo = document.getElementById('shortCountFefo');
-  if (elFefo) elFefo.innerHTML = countFefo;
-  if (elAll) elAll.innerHTML = countAll;
+  var elSkipped = document.getElementById('skippedCount');
+  if (elSkipped) elSkipped.innerHTML = countSkipped;
   if (elShort) elShort.innerHTML = countShort;
   if (elExp) elExp.innerHTML = countExpiring;
+  var elCatAll = document.getElementById('matCatCountAll');
+  var elCatRaw = document.getElementById('matCatCountRaw');
+  var elCatFlav = document.getElementById('matCatCountFlavor');
+  if (elCatAll) elCatAll.innerHTML = catAll;
+  if (elCatRaw) elCatRaw.innerHTML = catRaw;
+  if (elCatFlav) elCatFlav.innerHTML = catFlavor;
   // The pick log has no table rows of its own, so the loop above was a no-op for it;
   // apply the same search query to its material groups instead.
   _filterFefoOps(q);
@@ -13130,18 +13350,13 @@ function renderMaterials() {
     tableRows = '<tr><td colspan="'+colSpan+'" style="padding:28px 10px;text-align:center;color:#5f5e5a;font-size:12px;font-family:system-ui;">No materials in this window.</td></tr>';
   }
 
-  // Compute data date range for "All time" label
-  var matDates = materialsData.map(function(r){ return r.date; }).filter(Boolean);
-  var matMinDate = matDates.length ? new Date(Math.min.apply(null, matDates)) : null;
-  var matMaxDate = matDates.length ? new Date(Math.max.apply(null, matDates)) : null;
-  function fmtMo(d){ return d.toLocaleDateString('en-US',{month:'short',year:'numeric'}); }
-  var allTimeLabel = matMinDate && matMaxDate ? fmtMo(matMinDate)+'–'+fmtMo(matMaxDate) : '';
+  // Data date range for the "All time" column label and the 12-month availability
+  // check. Shared with the sub-bar window buttons via matDataSpan, so the two cannot
+  // disagree about how much history exists.
+  var _span = matDataSpan();
+  var allTimeLabel = _span.label;
   // Snap matWindow=12 back to 6 if we don't have 12 months of data yet
-  if (matWindow===12 && !(matMinDate&&(now-matMinDate)>=1000*60*60*24*365)) matWindow=6;
-
-  var allTimeHint = matWindow===0 && allTimeLabel
-    ? '<span style="font-size:11px;color:#5f5e5a;font-family:system-ui;">'+allTimeLabel+'</span>'
-    : '';
+  if (matWindow === 12 && !_span.has12mo) matWindow = 6;
   // Zero-usage checkbox \u2014 same architecture as showZeroDes on Jars/Bottles/etc.
   // Shown when there are zero-usage ingredients to reveal, when already on, or while
   // inventory is still loading (so it doesn't pop in late once the count is known).
@@ -13151,41 +13366,59 @@ function renderMaterials() {
         +'Show materials with zero usage'+(!inventoryLoaded ? ' (\u2026)' : (zeroUsageCount > 0 && !matShowZeroUsage ? ' ('+zeroUsageCount+')' : ''))
       +'</label>'
     : '';
+
   var pickerHTML='<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px;">'
-    // Left group \u2014 time-window toggle + all-time hint, with the zero-usage checkbox beneath
+    // Left group \u2014 the filters, with the zero-usage checkbox beneath
     +'<div style="display:flex;flex-direction:column;gap:7px;">'
       +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+        // View switch leads the bar now that the time window has moved to the top right.
+        // It decides which of the groups after it are shown at all \u2014 Lot Health is a
+        // different screen, not a filter on this one. No leading divider: it is first now.
         +'<div style="display:flex;gap:2px;padding:3px;background:#1a1d20;border:0.5px solid #2c2c2a;border-radius:8px;">'
-        +'<button onclick="matWindow=6;window._selectedMaterial=null;renderMaterials();" style="'+navBtnStyle(matWindow===6)+'">Past 6 months</button>'
-        +(matMinDate&&(now-matMinDate)>=1000*60*60*24*365?'<button onclick="matWindow=12;window._selectedMaterial=null;renderMaterials();" style="'+navBtnStyle(matWindow===12)+'">Past 12 months</button>':'')
-        +'<button onclick="matWindow=0;window._selectedMaterial=null;renderMaterials();" style="'+navBtnStyle(matWindow===0)+'">All time</button>'
+          +'<button type="button" onclick="setMatView(\'stock\')" title="Consumption and on-hand stock \u2014 the buying screen." style="'+navBtnStyle(matView==='stock')+'">Inventory &amp; usage</button>'
+          +'<button type="button" onclick="setMatView(\'lothealth\')" title="Per-lot expiry and FEFO condition. A separate view, so it never filters the list above." style="'+navBtnStyle(matView==='lothealth')+'">Lot Health</button>'
         +'</div>'
-        +allTimeHint
-        // 0.5px divider, then the All / Short only segmented control. Counts are
-        // filled in by filterMaterials() (called at the end of render); highlight
-        // is painted by paintShortToggle().
-        +'<span style="width:1px;height:24px;background:#2c2c2a;flex-shrink:0;"></span>'
-        +'<div id="materialsShortToggle" style="display:flex;gap:2px;padding:3px;background:#1a1d20;border:0.5px solid #2c2c2a;border-radius:8px;">'
-          +'<button type="button" class="seg-btn" data-short="0" onclick="setMaterialsAllSegment()" style="'+shortBtnStyle(!materialsShortOnly,false)+'">All <span class="seg-count" id="shortCountAll" style="font-size:10px;opacity:.75;">0</span></button>'
-          +'<button type="button" class="seg-btn" data-short="1" onclick="setMaterialsShortOnly(true)" style="'+shortBtnStyle(materialsShortOnly,true)+'">Short only <span class="seg-count" id="shortCountShort" style="font-size:10px;opacity:.75;">0</span></button>'
-          +'<button type="button" class="seg-btn" data-fefo="1" onclick="setMaterialsFefoOnly(true)" title="Materials holding a lot that was picked past while an earlier-expiring lot was still usable, and that lot is now expired or expiring within '+FEFO_REVIEW_HORIZON_DAYS+' days with at least '+FEFO_REVIEW_MIN_KG+' kg left." style="'+fefoBtnStyle(materialsFefoOnly)+'">FEFO review <span class="seg-count" id="shortCountFefo" style="font-size:10px;opacity:.75;">0</span></button>'
-          +'<button type="button" class="seg-btn" data-expiring="1" onclick="setMaterialsExpiringOnly(true)" title="Materials holding stock that is already past date, expires within '+EXPIRY_SOON_DAYS+' days, or that first-expiry-first-out says will not be used in time." style="'+expiringBtnStyle(materialsExpiringOnly)+'">Expiring <span class="seg-count" id="shortCountExpiring" style="font-size:10px;opacity:.75;">0</span></button>'
-        +'</div>'
-        // Second-level toggle, only while FEFO review is the active segment: the same
-        // pick data read two ways. "Lots at risk" is the remediation list (what to go
-        // move today); "Pick opportunities" is the period-scoped decision log used for
-        // training. Hidden otherwise — it would be meaningless next to Short only.
-        +(materialsFefoOnly
+        // Category axis, stock view only: what KIND of material. Hidden on Lot Health,
+        // which is read whole — you want every lot at risk, not the flavours among them.
+        +(matView === 'stock'
           ? '<span style="width:1px;height:24px;background:#2c2c2a;flex-shrink:0;"></span>'
             +'<div style="display:flex;gap:2px;padding:3px;background:#1a1d20;border:0.5px solid #2c2c2a;border-radius:8px;">'
-              +'<button type="button" onclick="setFefoOpsView(true)" title="The individual picks — by day, week, month or quarter — where an earlier-expiring lot was available and was passed over. Caught the same day, a pick can still be put right; it also includes decisions that turned out fine, and says so." style="'+_fefoOpsBtn(fefoOpsView)+'">Pick opportunities</button>'
-              +'<button type="button" onclick="setFefoOpsView(false)" title="Lots sitting in stock that keep getting walked past and are now expired or expiring within '+FEFO_REVIEW_HORIZON_DAYS+' days. What to go move today." style="'+_fefoOpsBtn(!fefoOpsView)+'">Lots at risk</button>'
+            +'<button type="button" onclick="setMatCategory(\'all\')" style="'+shortBtnStyle(matCategory==='all',false)+'">All <span class="seg-count" id="matCatCountAll" style="font-size:10px;opacity:.75;">0</span></button>'
+            +'<button type="button" onclick="setMatCategory(\'raw\')" style="'+shortBtnStyle(matCategory==='raw',false)+'">Raw materials <span class="seg-count" id="matCatCountRaw" style="font-size:10px;opacity:.75;">0</span></button>'
+            +'<button type="button" onclick="setMatCategory(\'flavor\')" style="'+shortBtnStyle(matCategory==='flavor',false)+'">Flavors <span class="seg-count" id="matCatCountFlavor" style="font-size:10px;opacity:.75;">0</span></button>'
             +'</div>'
           : '')
+        // Stock view only: shortage. A plain toggle — click it again to clear.
+        +(matView === 'stock'
+          ? '<span style="width:1px;height:24px;background:#2c2c2a;flex-shrink:0;"></span>'
+            +'<div id="materialsShortToggle" style="display:flex;gap:2px;padding:3px;background:#1a1d20;border:0.5px solid #2c2c2a;border-radius:8px;">'
+              +'<button type="button" class="seg-btn" data-short="1" onclick="setMaterialsShortOnly('+(materialsShortOnly?'false':'true')+')" style="'+shortBtnStyle(materialsShortOnly,true)+'">Short only <span class="seg-count" id="shortCountShort" style="font-size:10px;opacity:.75;">0</span></button>'
+            +'</div>'
+          : '')
+        // Lot Health only. Pick opportunities leads: it is the day-to-day screen. Expiring
+        // is the lot-level exposure list; its Skipped only toggle is what used to be a
+        // separate \u201cLots at risk\u201d segment \u2014 those 31 lots are a strict subset of the
+        // expiring ones, so it was never a different view, just this filter pre-applied.
+        // Exclusive rather than togglable: one has to be active or the view has nothing to
+        // show, and \u201coff\u201d would just be the stock table under a Lot Health heading.
+        +(matView === 'lothealth'
+          ? '<span style="width:1px;height:24px;background:#2c2c2a;flex-shrink:0;"></span>'
+            +'<div id="materialsSectionToggle" style="display:flex;gap:2px;padding:3px;background:#1a1d20;border:0.5px solid #2c2c2a;border-radius:8px;">'
+              +'<button type="button" class="seg-btn" data-fefo="1" onclick="setMaterialsFefoOnly(true)" title="The individual picks \u2014 by day, week, month or quarter \u2014 where an earlier-expiring lot was available and was passed over. Caught the same day, a pick can still be put right." style="'+fefoBtnStyle(materialsFefoOnly)+'">Pick opportunities</button>'
+              +'<button type="button" class="seg-btn" data-expiring="1" onclick="setMaterialsExpiringOnly(true)" title="Materials holding stock that is already past date, expires within '+EXPIRY_SOON_DAYS+' days, or that first-expiry-first-out says will not be used in time." style="'+expiringBtnStyle(materialsExpiringOnly)+'">Expiring <span class="seg-count" id="shortCountExpiring" style="font-size:10px;opacity:.75;">0</span></button>'
+            +'</div>'
+            +(materialsExpiringOnly
+              ? '<span style="width:1px;height:24px;background:#2c2c2a;flex-shrink:0;"></span>'
+                +'<div id="materialsSkippedToggle" style="display:flex;gap:2px;padding:3px;background:#1a1d20;border:0.5px solid #2c2c2a;border-radius:8px;">'
+                  +'<button type="button" class="seg-btn" data-skipped="1" onclick="setMaterialsSkippedOnly('+(matSkippedOnly?'false':'true')+')" title="Narrow to lots that are expiring AND keep getting walked past on the pick sheet \u2014 at least '+FEFO_REVIEW_MIN_KG+' kg, expired or within '+FEFO_REVIEW_HORIZON_DAYS+' days. What to go move today." style="'+shortBtnStyle(matSkippedOnly,true)+'">Skipped only <span class="seg-count" id="skippedCount" style="font-size:10px;opacity:.75;">0</span></button>'
+                +'</div>'
+              : '')
+          : '')
+
       +'</div>'
       +zeroUsageCheckbox
     +'</div>'
-    // Right group \u2014 search + export (same placement as Jars/Bottles/Lids/etc.)
+    // Right group \u2014 search + export. The consumption window moved to the sub-bar.
     +'<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">'
       +'<div style="position:relative;display:inline-flex;align-items:center;">'
       +'<input id="matSearchInput" type="text" placeholder="Search ingredient, part # or T# \u2026" oninput="matSearch=this.value;filterMaterials();document.getElementById(\'matSearchClear\').style.display=this.value?\'flex\':\'none\';" value="'+esc(matSearch)+'" style="padding:4px 28px 4px 10px;border:0.5px solid #444441;border-radius:8px;background:#1e2124;color:#e8e6e0;font-size:12px;font-family:system-ui;width:248px;height:28px;">'
@@ -13265,7 +13498,7 @@ function renderMaterials() {
   // above it is unchanged, so the toggle back is always in reach. filterMaterials() at
   // the end is safe with no table in the DOM — it guards every row lookup — and still
   // fills the segment counts and paints the active segment.
-  if (materialsFefoOnly && fefoOpsView) {
+  if (matView === 'lothealth' && materialsFefoOnly) {
     content.innerHTML = pickerHTML + _covHTML + (_expiryIssuesOpen ? expiryIssuesPanelHTML() : '')
       + _fefoOpsPanelHTML();
     filterMaterials();
