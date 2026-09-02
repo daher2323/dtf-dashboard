@@ -2633,7 +2633,10 @@ var FEFO_OPS_GAP_DAYS = 90;      // default: and what got picked expired at leas
 var _fefoOpsCache = null, _fefoOpsKey = '';
 function computeFefoOps() {
   var ix = _fefoIndex();
-  if (_fefoOpsCache && _fefoOpsKey === ix.key) return _fefoOpsCache;
+  // The toggle changes which siblings qualify, so it belongs in the cache identity —
+  // without it, ticking the box would return the previous result unchanged.
+  var opsKey = ix.key + '|ae:' + (fefoOpsAllowExpired ? 1 : 0);
+  if (_fefoOpsCache && _fefoOpsKey === opsKey) return _fefoOpsCache;
   var idx = ix.idx, byPart = ix.byPart, picksByLot = ix.picksByLot;
   var couldContribute = ix.couldContribute, stockAt = ix.stockAt, stockNow = ix.stockNow;
 
@@ -2656,20 +2659,45 @@ function computeFefoOps() {
     var sibs = byPart[used.part] || [];
     var mine = picksByLot[k];
     for (i = 0; i < mine.length; i++) {
-      var when = mine[i].t, best = null, bestExp = null;
+      // Two candidates, tracked separately: the earliest-expiring sibling that was still
+      // IN DATE at pick time, and the earliest-expiring one already past date but inside
+      // the grace window. In-date always wins (see the resolution below the loop).
+      var when = mine[i].t, best = null, bestExp = null, bestPast = null, bestPastExp = null;
       for (j = 0; j < sibs.length; j++) {
         var sn = sibs[j];
         if (sn === k) continue;
         var sib = idx[sn];
         if (!sib || sib.exp == null) continue;
         if (sib.exp >= used.exp) continue;             // not earlier-expiring
-        if (sib.exp < when) continue;                  // already expired — skipping was right
+        var expiredAtPick = sib.exp < when;
+        // Normally skipping an expired lot was right — you cannot use expired material —
+        // so this is the most load-bearing exclusion here. fefoOpsAllowExpired lifts it
+        // (see the declaration).
+        if (expiredAtPick && !fefoOpsAllowExpired) continue;
         var rd = parseInvDate(sib.received);
         if (rd && rd.getTime() > when) continue;       // not received yet
         // On the floor, and holding enough to have been worth taking for THIS run.
         if (!couldContribute(sn, when, mine[i].needed || 0)) continue;
-        if (best === null || sib.exp < bestExp) { best = sn; bestExp = sib.exp; }
+        if (expiredAtPick) {
+          if (bestPast === null || sib.exp < bestPastExp) { bestPast = sn; bestPastExp = sib.exp; }
+        } else {
+          if (best === null || sib.exp < bestExp) { best = sn; bestExp = sib.exp; }
+        }
       }
+      // An in-date sibling ALWAYS outranks an expired one, and the expired candidate is
+      // only ever a fallback for picks that had no in-date alternative at all. That makes
+      // the toggle strictly additive: every finding that stands with the box unticked
+      // keeps the same shouldLot when it is ticked, and only genuinely new rows appear.
+      //
+      // Letting an expired lot win instead broke two things at once, both silently.
+      // Retargeting a finding at an older expired lot (a) loses the correction, because a
+      // correction is detected by a later submission naming shouldLot — re-log T33655 and
+      // the board is now asking about T31186 — and (b) can flip bothPulled to true if that
+      // older lot happened to be on the same slip, writing the finding off as a split
+      // pull. Run 2609003 / part 20-546 lost a corrected, green-ticked row exactly that
+      // way. It is also the more useful answer: if an in-date earlier lot was on the
+      // floor, that is the one that should have been drawn.
+      if (best === null && bestPast !== null) { best = bestPast; bestExp = bestPastExp; }
       if (best === null) continue;
       var lq = liveQty[best], lx = liveExp[best];
       // Presence in lotRows is the fact; a quantity threshold is not. This used to read
@@ -2689,6 +2717,35 @@ function computeFefoOps() {
       // it into "N split pulls excluded" instead of showing the green tick. The exclusion is
       // meant for FEFO followed at the time, not FEFO restored afterwards.
       var bothPulled = mine[i].firstSlip !== false && (mine[i].rowTs || []).indexOf(best) !== -1;
+      // ...and the same thing across slips. The test above only sees the T#s on THIS slip,
+      // so it misses a run whose older lot was drained on an earlier slip and topped up on
+      // a later one. Run 2609003 / part 20-546 is the case: 7:35 pulled T31186 (0.6 kg, all
+      // it had) alongside T35226, then 8:15 re-logged against T33655. Examining the T33655
+      // pick, T31186 is nowhere on the 8:15 slip, so it read as passed over — while the
+      // pick sheet plainly shows it was drawn an hour earlier. A lot already consumed for
+      // this very run+part cannot also have been skipped by it.
+      //
+      // STRICTLY earlier slips only. Two boundaries, both load-bearing:
+      //   - the same slip is left to the guarded test above. Written as <= instead, this
+      //     catches it and bypasses the firstSlip guard, which is there to stop a
+      //     correction being read as a split pull — it silently un-flagged run 2603192 /
+      //     part 20-029, a finding that had already been put right at 14:07:51.
+      //   - a LATER slip naming `best` is a correction, picked up as fixedAt below.
+      var drawnEarlier = false;
+      if (!bothPulled) {
+        var earlier = ix.byLotPart[mine[i].lpKey] || [];
+        var myTf = mine[i].tf;
+        for (var ei = 0; ei < earlier.length; ei++) {
+          var eTf = earlier[ei].tf;
+          // Fall back to the day stamp only when a slip has no time; same-day rows then
+          // compare equal and are correctly NOT treated as earlier.
+          var strictlyEarlier = (myTf != null && eTf != null) ? (eTf < myTf) : (earlier[ei].t < when);
+          if (!strictlyEarlier) continue;
+          if (earlier[ei].ts.indexOf(best) === -1) continue;
+          drawnEarlier = true;
+          break;
+        }
+      }
       // Was it put right afterwards? A correction is a LATER submission for the same
       // production lot and part that names the lot which should have been pulled.
       //
@@ -2747,6 +2804,11 @@ function computeFefoOps() {
         outcome: !onShelf ? 'consumed' : (lx != null && lx < today ? 'expired' : 'sitting'),
         leftKg: onShelf ? lq : 0,
         bothPulled: bothPulled,
+        // `best` was drawn on a STRICTLY EARLIER slip of this same run+part, so by the time
+        // this pick was made it had already been taken — it cannot also have been passed
+        // over. Kept apart from bothPulled because the two consolidate differently: see the
+        // AND in the merge below.
+        drawnEarlier: drawnEarlier,
         fixedAt: fixedAt,
         // Could the lot that should have been pulled actually have covered this pull? 47%
         // of flagged decisions it could not, and the FEFO-correct action there was a
@@ -2800,6 +2862,14 @@ function computeFefoOps() {
     if (d0.gapDays > prev.gapDays) prev.gapDays = d0.gapDays;
     if (d0.gapDays < prev.gapMin) prev.gapMin = d0.gapDays;
     if (d0.bothPulled) prev.bothPulled = true;
+    // ANDs, where bothPulled ORs — and the difference is load-bearing. A merged row covers
+    // several picks against one older lot on one day; "already taken before this pick" is
+    // only true of the row if it was true of EVERY pick in it. OR'ing it instead suppressed
+    // run 2603192 / part 20-029: the 14:08:40 pick saw T34206 drawn at 14:07:51 and so was
+    // a genuine split, but the 14:06:11 pick preceded that draw and was a real mispick,
+    // already put right — exactly the "FEFO restored afterwards" case the firstSlip guard
+    // exists to protect. OR deleted the green tick; AND keeps it.
+    if (!d0.drawnEarlier) prev.drawnEarlier = false;
     if (d0.fixedAt != null && (prev.fixedAt == null || d0.fixedAt < prev.fixedAt)) prev.fixedAt = d0.fixedAt;
   }
   // Earliest-expiring drum first, so the cell reads in the same order as the rest of the view.
@@ -2831,7 +2901,7 @@ function computeFefoOps() {
     if (rank[a.outcome] !== rank[b.outcome]) return rank[a.outcome] - rank[b.outcome];
     return b.gapDays - a.gapDays;
   });
-  _fefoOpsKey = ix.key;
+  _fefoOpsKey = opsKey;
   _fefoOpsCache = out;
   return out;
 }
@@ -2850,6 +2920,19 @@ var fefoOpsGran = 'day';
 var fefoOpsAnchor = null;     // a Date inside the selected period; null = current period
 var fefoOpsLife = FEFO_OPS_LIFE_DAYS;
 var fefoOpsGap = FEFO_OPS_GAP_DAYS;
+// Count a sibling that was ALREADY past its expiry date at pick time as having been
+// available. Off by default, because for most materials skipping expired stock is
+// correct and flagging it would be telling people off for doing the right thing.
+//
+// It exists because an expiry date is not a hard limit on every material — for some, it
+// is a conservative marker and the lot is still the one that should have been drawn.
+// Which materials those are is a QA judgement the dashboard cannot make, so this is an
+// explicit opt-in rather than a rule applied on the user's behalf. No bound on how far
+// past date: the switch means what it says, and an invisible cutoff would be a rule
+// nobody could see. Measured 2026-09-01 over 21,911 pick rows, it takes the board from
+// 1,714 flagged to 2,496 at life<=180/gap>=90, all of it new rows (see below).
+var fefoOpsAllowExpired = false;
+
 var fefoOpsOpen = {};         // part # -> explicit override of the expand/collapse stance
 // Groups start OPEN. A day is two or three materials and a handful of picks, and what is being
 // read is the evidence under each one — which lot was pulled, which should have been, whether
@@ -2931,6 +3014,7 @@ function navFefoOps(delta) {
 }
 function goFefoOpsLive() { fefoOpsAnchor = null; _fefoOpsRerender(); }
 function setFefoOpsThresh(life, gap) { fefoOpsLife = life; fefoOpsGap = gap; _fefoOpsRerender(); }
+function setFefoOpsAllowExpired(on) { fefoOpsAllowExpired = !!on; _fefoOpsRerender(); }
 function toggleFefoOpsMat(part) {
   fefoOpsOpen[part] = !_fefoOpsIsOpen(part);
   _fefoOpsRerender();
@@ -3021,10 +3105,10 @@ function _fefoOpsGroups() {
   // rows the exclusion removed — not every split pull in the period, most of which the
   // thresholds would have dropped anyway.
   var splitPulls = inPeriod.filter(function(d){
-    return d.bothPulled && d.lifeLeft <= fefoOpsLife && d.gapDays >= fefoOpsGap;
+    return (d.bothPulled || d.drawnEarlier) && d.lifeLeft <= fefoOpsLife && d.gapDays >= fefoOpsGap;
   });
   var flagged = inPeriod.filter(function(d){
-    return !d.bothPulled && d.lifeLeft <= fefoOpsLife && d.gapDays >= fefoOpsGap;
+    return !d.bothPulled && !d.drawnEarlier && d.lifeLeft <= fefoOpsLife && d.gapDays >= fefoOpsGap;
   });
 
   // Denominator: picks in this period we could actually evaluate. Stated so the counts
@@ -3148,6 +3232,10 @@ function _fefoOpsPanelHTML() {
           + [90,180,365].map(function(v){ return '<button onclick="setFefoOpsThresh('+fefoOpsLife+','+v+')" style="'+_fefoOpsBtn(fefoOpsGap===v)+'">&ge;'+v+'d</button>'; }).join('')
         + '</div>'
         + '<span>later.</span>'
+        + '<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;margin-left:4px;padding:2px 8px;border:0.5px solid ' + (fefoOpsAllowExpired ? '#EF9F27' : '#2c2c2a') + ';border-radius:7px;background:#141618;color:' + (fefoOpsAllowExpired ? '#FAC775' : '#888780') + ';">'
+          + '<input type="checkbox" ' + (fefoOpsAllowExpired ? 'checked ' : '') + 'onchange="setFefoOpsAllowExpired(this.checked)" style="margin:0;cursor:pointer;accent-color:#EF9F27;">'
+          + '<span>Allow expired materials</span>'
+        + '</label>'
       + '</div>'
       // ── How to close one out ──
       // The Fixed column is the only thing here with no adoption: it reads em-dash on every
@@ -3411,7 +3499,7 @@ function _fefoOpsPanelHTML() {
                       + '</div>';
                   }).join('')
               + '</td>'
-              + '<td style="' + td + '">' + _blendCopyCell(d.shouldLot) + ' <span style="color:#FAC775;font-size:10px;">exp ' + _fefoOpsShortDate(d.shouldExp) + ' &middot; ' + d.lifeLeft + 'd left</span></td>'
+              + '<td style="' + td + '">' + _blendCopyCell(d.shouldLot) + ' <span style="color:' + (d.lifeLeft < 0 ? '#F09595' : '#FAC775') + ';font-size:10px;">exp ' + _fefoOpsShortDate(d.shouldExp) + ' &middot; ' + (d.lifeLeft < 0 ? 'expired ' + Math.abs(d.lifeLeft) + 'd earlier' : d.lifeLeft + 'd left') + '</span></td>'
               // A range where the drums taken expire at different removes from the older
               // lot — picking one figure would misreport the others.
               + (function(){
@@ -15178,6 +15266,7 @@ function exportMaterials() {
             ? ' · only '+Math.round(_ops.cov.pct*100)+'% of this period’s '+_ops.cov.entries+' logged picks are still checkable'
             : '')
         + ' · flagged when the lot passed over had '+fefoOpsLife+' days or less of life left AND what was picked instead expired at least '+fefoOpsGap+' days later'
+        + (fefoOpsAllowExpired ? ' · INCLUDING lots already past their expiry date at pick time' : '')
         + (_ops.splitPulls ? ' · '+_ops.splitPulls+' split pull'+(_ops.splitPulls===1?'':'s')+' excluded (earlier lot drawn on the same slip — FEFO, not a skip)' : '')
         + (_opsQ ? ' · Search "'+matSearch+'"' : '')],
       // "about half of picked T#s are" was true before the archived-lots feed was linked. It
