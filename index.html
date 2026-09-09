@@ -483,7 +483,7 @@
     .pnl-bar-cell { width: 46px !important; padding-left: 6px !important; padding-right: 10px !important; }
     .pnl-bar-only { display: none !important; }
 
-    /* Six sub-tabs in one segmented pill overflow a phone: Neckbands sat past the
+    /* Seven sub-tabs in one segmented pill overflow a phone: the last ones sat past the
        right edge, and reaching it meant scrolling the whole page sideways — which
        drags the sticky bars along with it. Scroll the pill itself instead, the way
        .main-tabs already does. min-width:0 is required for a flex item to be
@@ -506,12 +506,12 @@
        before the bar gets any, so on a phone the figures were crushed against each
        other. Name takes its own line, the bar goes the way every other share bar
        does here (the % it annotates stays), and units/lots/% share the line below.
-       The product chips lose their 150px indent, which was aligning them under a
-       name column that no longer exists. */
+       The product block keeps its own left accent indent — it is a table now, not a row
+       of chips, so it does not need the old 150px alignment to a name column. */
     .proc-cust-row { flex-wrap: wrap; gap: 3px 10px !important; }
     .proc-cust-row > :nth-child(1) { width: 100% !important; }
     .proc-cust-row > :nth-child(3) { flex: 1 1 auto; text-align: left !important; width: auto !important; }
-    .proc-cust-prods { padding-left: 0 !important; }
+    .proc-cust-prods { margin-left: 4px !important; }
 
     .proc-toolbar { flex-direction: column; align-items: stretch !important; gap: 10px; }
     .proc-toolbar > div:last-child { justify-content: flex-start; }
@@ -1263,8 +1263,8 @@ var selectedDetailYear = new Date().getFullYear();
 var selectedDetailRange = null;
 var selectedPerfRange = null;
 var perfMixView       = 'all'; // 'all' | 'powder' | 'capsule' — Trend product-mix toggle
-var procView = 'materials'; // 'materials' | 'jars' | 'bottles' | 'lids' | 'desiccants'
-var procSearch = '';        // case-insensitive SKU filter on jars/bottles/lids/desiccants/neckbands
+var procView = 'materials'; // 'materials' | 'jars' | 'bottles' | 'lids' | 'scoops' | 'desiccants' | 'neckbands'
+var procSearch = '';        // case-insensitive SKU filter on jars/bottles/lids/scoops/desiccants/neckbands
 var matYear = new Date().getFullYear(); // kept for renderMatInline compat
 var matWindow = 6; // lookback months: 6 | 12 | 0=all
 var matSearch = '';
@@ -2933,6 +2933,12 @@ function computeFefoOps() {
       }
       out.push({
         when: when,
+        // The submission clock, for DISPLAY ONLY. Every bucketing, grouping and threshold
+        // decision in this view stays day-level on `when` (see _fefoPickTs) — this exists
+        // so a reader working today's queue can see which picks are still on the floor.
+        // null on a slip with no readable time, where the cell shows just the date rather
+        // than inventing an hour.
+        whenTs: mine[i].tf,
         part: used.part,
         material: mine[i].material || (inventoryByPart[used.part] ? inventoryByPart[used.part].material : '') || '',
         orderLot: mine[i].orderLot || '',
@@ -3020,6 +3026,11 @@ function computeFefoOps() {
     // exists to protect. OR deleted the green tick; AND keeps it.
     if (!d0.drawnEarlier) prev.drawnEarlier = false;
     if (d0.fixedAt != null && (prev.fixedAt == null || d0.fixedAt < prev.fixedAt)) prev.fixedAt = d0.fixedAt;
+    // EARLIEST slip, mirroring `when`. A merged row can cover several slips against one
+    // older lot on one day (a run split across newer drums), and the time being reported
+    // is when the run first went past that lot — the latest would date the decision to a
+    // top-up made after it.
+    if (d0.whenTs != null && (prev.whenTs == null || d0.whenTs < prev.whenTs)) prev.whenTs = d0.whenTs;
   }
   // Earliest-expiring drum first, so the cell reads in the same order as the rest of the view.
   for (oi = 0; oi < merged.length; oi++) {
@@ -3199,6 +3210,15 @@ function _fefoOpsShortDate(ms) {
   var d = new Date(ms);
   return (d.getMonth()+1) + '/' + d.getDate() + '/' + String(d.getFullYear()).slice(2);
 }
+// Clock time of a submission. Lowercase am/pm, matching the Fixed column, which is the
+// other place in this table a time is shown — the two sit two columns apart and have to
+// read as the same kind of stamp.
+function _fefoOpsClock(ms) {
+  var d = new Date(ms);
+  var h = d.getHours(), mi = d.getMinutes(), ap = h < 12 ? 'am' : 'pm';
+  h = h % 12; if (h === 0) h = 12;
+  return h + ':' + (mi < 10 ? '0' : '') + mi + ap;
+}
 // How a correction is stamped. Same-day corrections are the norm — and the point — so showing
 // the date next to a pick from that same date says nothing; the time does. Older corrections
 // keep the date, where the day is the useful part and the clock is noise.
@@ -3206,9 +3226,7 @@ function _fefoOpsFixedStamp(fixedMs, pickMs) {
   if (fixedMs == null) return '—';
   var f = new Date(fixedMs), p = new Date(pickMs);
   if (f.toDateString() !== p.toDateString()) return _fefoOpsShortDate(fixedMs);
-  var h = f.getHours(), mi = f.getMinutes(), ap = h < 12 ? 'am' : 'pm';
-  h = h % 12; if (h === 0) h = 12;
-  return h + ':' + (mi < 10 ? '0' : '') + mi + ap;
+  return _fefoOpsClock(fixedMs);
 }
 // "used since" used to sit on any lot under 25 kg, including ones that had already expired.
 // The wording now follows the lot's actual state, and the badge carries the quantity so it
@@ -3585,9 +3603,9 @@ function _fefoOpsPanelHTML() {
       // viewport squeeze them until content spills its cell (fixed layout does not reflow to
       // fit); the wrapper scrolls horizontally in that case.
       var body = '<div style="background:#141618;border-bottom:0.5px solid #2c2c2a;overflow-x:auto;">'
-        + '<table style="width:100%;min-width:1124px;table-layout:fixed;border-collapse:collapse;">'
+        + '<table style="width:100%;min-width:1170px;table-layout:fixed;border-collapse:collapse;">'
         + '<colgroup>'
-          + '<col style="width:76px;">'     // Picked on
+          + '<col style="width:122px;">'    // Picked on (+ clock time)
           + '<col style="width:240px;">'    // Production lot (+ brand · product beneath)
           + '<col style="width:150px;">'    // Pulled
           + '<col style="width:205px;">'    // Should have pulled
@@ -3615,7 +3633,9 @@ function _fefoOpsPanelHTML() {
             var nm = _fefoOpsLotName(d.orderLot);
             var _uS = matUnitShort(d.material || g.material || '');
             return '<tr style="border-top:0.5px solid #2c2c2a;' + (d.fixedAt ? 'opacity:.62;' : '') + '">'
-              + '<td style="' + td + 'color:#cfcdc7;">' + _fefoOpsShortDate(d.when) + '</td>'
+              + '<td style="' + td + 'color:#cfcdc7;">' + _fefoOpsShortDate(d.when)
+                + (d.whenTs != null ? ' <span style="font-size:10px;color:#888780;">' + _fefoOpsClock(d.whenTs) + '</span>' : '')
+              + '</td>'
               + '<td style="' + td + 'color:#888780;">' + (d.orderLot ? esc(d.orderLot) : '—')
                 // Brand and product on a second line: this is the whole point of the
                 // "this week" read — knowing which product it was is what lets someone
@@ -5627,13 +5647,14 @@ function renderSubBar() {
         + '</div>';
     }
   } else if (mainSection === 'procurement') {
-    var pm = procView==='materials', pj = procView==='jars', pb = procView==='bottles', pl = procView==='lids', pd = procView==='desiccants', pn = procView==='neckbands';
+    var pm = procView==='materials', pj = procView==='jars', pb = procView==='bottles', pl = procView==='lids', pd = procView==='desiccants', pn = procView==='neckbands', pc = procView==='scoops';
     sb.innerHTML =
       '<div class="proc-subtabs" style="display:flex;gap:2px;padding:3px;background:#1a1d20;border:0.5px solid #2c2c2a;border-radius:8px;">'
       + '<button onclick="setProcView(\'materials\')" style="'+navBtnStyle(pm)+'">Materials</button>'
       + '<button onclick="setProcView(\'jars\')" style="'+navBtnStyle(pj)+'">Jars</button>'
       + '<button onclick="setProcView(\'bottles\')" style="'+navBtnStyle(pb)+'">Bottles</button>'
       + '<button onclick="setProcView(\'lids\')" style="'+navBtnStyle(pl)+'">Lids</button>'
+      + '<button onclick="setProcView(\'scoops\')" style="'+navBtnStyle(pc)+'">Scoops</button>'
       + '<button onclick="setProcView(\'desiccants\')" style="'+navBtnStyle(pd)+'">Desiccants</button>'
       + '<button onclick="setProcView(\'neckbands\')" style="'+navBtnStyle(pn)+'">Neckbands</button>'
       + '</div>'
@@ -11121,7 +11142,20 @@ function generateProcSynopsis(sid) {
   var sentences = [];
 
   // Sentence 1: top-line usage
-  if (!hasLY) {
+  //
+  // Three cases, and the first exists because the other two both misread a column younger
+  // than the comparison window. "We started using 80cc Long in Q3 2026" is what the second
+  // branch said about a scoop size that has been in the building for years — the first
+  // quarter carrying data is the quarter the SHEET started recording, not the quarter the
+  // scoop arrived. Where there is no baseline the sentence reports what was measured and
+  // over what window, and makes no claim about a trend.
+  if (!cd.hasBaseline && cd.trackedSince) {
+    sentences.push('We\'ve recorded ' + n(cd.ytdUnits) + ' units of ' + cd.sku
+      + ' across ' + cd.ytdLots + ' lot' + (cd.ytdLots!==1?'s':'')
+      + ' since ' + typeLabel + ' tracking began on ' + cd.trackedSince
+      + (cd.ytdPct != null ? ', ' + cd.ytdPct + '% of tracked ' + typeLabel + ' usage' : '')
+      + '. There is no prior-year window to compare against yet, so no trend can be read from this.');
+  } else if (!hasLY) {
     var firstQ = cd.qtrs.filter(function(q){return q.units>0;})[0];
     var when = firstQ ? 'in ' + firstQ.label : 'this year';
     sentences.push('We started using ' + cd.sku + ' ' + when
@@ -11198,6 +11232,22 @@ function generateProcSynopsis(sid) {
   el.innerHTML = html;
 }
 
+// Open/close one customer's product list in a Jars/Bottles/Lids/Scoops/Desiccants/
+// Neckbands panel. Mirrors matToggleLot: flip the block, rotate the chevron, and record
+// the state so a re-render (a refresh landing, the By quarter/By customer toggle) leaves
+// open rows open. Keyed on sid + row index, so two SKUs expanded at once keep their own.
+function toggleProcCust(rowId) {
+  if (!window._procCustOpen) window._procCustOpen = {};
+  var block = document.getElementById('pcp-' + rowId);
+  if (!block) return;
+  var willOpen = block.style.display === 'none';
+  block.style.display = willOpen ? 'block' : 'none';
+  var chev = document.getElementById('pcv-' + rowId);
+  if (chev) chev.style.transform = willOpen ? 'rotate(90deg)' : 'rotate(0deg)';
+  if (willOpen) window._procCustOpen[rowId] = true;
+  else delete window._procCustOpen[rowId];
+}
+
 function switchProcTab(sid, tab) {
   _procTab[sid] = tab;
   var custEl = document.getElementById('pcust-' + sid);
@@ -11234,23 +11284,24 @@ function exportProcurement() {
   var cutoff = new Date(TRACKING_START);
   var isDes  = procView === 'desiccants';
   var isNeck = procView === 'neckbands';
-  var Label  = procView === 'jars' ? 'Jar' : procView === 'bottles' ? 'Bottle' : procView === 'lids' ? 'Lid' : procView === 'desiccants' ? 'Desiccant' : 'Neckband';
+  var isScoop = procView === 'scoops';
+  var Label  = procView === 'jars' ? 'Jar' : procView === 'bottles' ? 'Bottle' : procView === 'lids' ? 'Lid' : procView === 'scoops' ? 'Scoop' : procView === 'desiccants' ? 'Desiccant' : 'Neckband';
   var dateStr = now.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
 
   function getSku(r) {
     if (procView === 'lids') return normMatName([r['Lid Size'],r['Lid Color'],r['Lid Profile']].map(function(v){return(v||'').trim();}).filter(Boolean).join(' '));
     if (isDes)  { var dv=(r['Desiccant']||'').trim(); return /^(none|n\/a)$/i.test(dv)?'':dv; }
     if (isNeck) { var nv=(r['Neckband Used']||'').trim(); return /^(none|n\/a)$/i.test(nv)?'':nv; }
+    // Scoops read like neckbands — an identity column with None/N/A for products that
+    // take none — but their UNITS come from Final Units, not a count column: one scoop
+    // per product, always. Desiccants are the exception there, not the rule (several go
+    // in a jar to pull moisture down).
+    if (isScoop) { var sv=(r['Scoop']||'').trim(); return /^(none|n\/a)$/i.test(sv)?'':sv; }
     return normMatName((r[procView==='jars'?'Jar Size':'Bottle Size']||'').trim());
   }
   function getUnits(r) { return isDes ? num(r['Number of Desiccants Used']) : num(r['Final Units']); }
 
   var allRowsCombined = allRows.concat(allRows25);
-
-  // Build quarters
-  var displayQtrs = [];
-  var dq = new Date(TRACKING_START);
-  while (getQuarterKey(dq) <= curQk) { displayQtrs.push(getQuarterKey(dq)); dq.setMonth(dq.getMonth()+3); }
 
   // Build skuQtr
   var skuQtr = {}, totalQtrUnits = {};
@@ -11272,6 +11323,20 @@ function exportProcurement() {
   var ytdStart    = new Date(nowYr,0,1);
   var ytd25start  = new Date(nowYr-1,0,1);
   var ytd25cutoff = new Date(nowYr-1,now.getMonth(),now.getDate(),23,59,59);
+
+  // Same coverage read as the screen, and the quarter columns are clamped to it the same
+  // way — a workbook that gets forwarded has to carry the same basis as the view it came
+  // from, and has to carry it on its own face (the notes below), since nobody opening the
+  // file can see the header that explained it.
+  var cov = procColumnCoverage(allRowsCombined, getSku, cutoff, ytd25start);
+  var qStart = cov.firstSeen ? new Date(cov.firstSeen.getFullYear(), Math.floor(cov.firstSeen.getMonth()/3)*3, 1) : new Date(TRACKING_START);
+  if (qStart < new Date(TRACKING_START)) qStart = new Date(TRACKING_START);
+  var displayQtrs = [];
+  var dq = new Date(qStart);
+  while (getQuarterKey(dq) <= curQk) { displayQtrs.push(getQuarterKey(dq)); dq.setMonth(dq.getMonth()+3); }
+  var covScope = (!cov.firstSeen || displayQtrs[0] === getQuarterKey(new Date(TRACKING_START)))
+    ? 'Q1 2025 \u2192 present'
+    : 'tracked since ' + cov.sinceStr + '  \u00b7  ' + cov.dayCount + ' day' + (cov.dayCount===1?'':'s') + ' of data';
 
   // Build summary rows — respect the active search filter so the export
   // mirrors what's visible on screen.
@@ -11296,7 +11361,12 @@ function exportProcurement() {
       if(dt.getFullYear()===PRIOR_YEAR) fy25+=u;
     });
     var chg = ytd25>0 ? (ytd-ytd25)/ytd25 : null;
-    var tag = ytd25>0 ? (chg>0.05?'↑ Growing':chg<-0.05?'↓ Declining':'→ Flat') : 'New';
+    // 'No baseline' outranks the rest — see procColumnCoverage. Printing 'New' against every
+    // SKU of a column that has only been recorded for four days states something about the
+    // product that is only true of the feed.
+    var tag = !cov.hasBaseline
+      ? 'No baseline'
+      : ytd25>0 ? (chg>0.05?'↑ Growing':chg<-0.05?'↓ Declining':'→ Flat') : 'New';
     return {sku:sku, qVals:qVals, fy25:fy25, ytd:ytd, ytd25:ytd25, chg:chg, tag:tag};
   }).sort(function(a,b){return b.ytd-a.ytd;});
 
@@ -11306,15 +11376,23 @@ function exportProcurement() {
 
   // ── Sheet 1: Quarterly Summary ──
   var qtrLabels = displayQtrs.map(function(qk){ return quarterLabel(qk)+(qk===curQk?' (partial)':''); });
-  // 'Total since Q1 2025' mirrors the Total row now closing each card's quarterly
-  // table — it's the sum of the quarter columns to its left, partial quarter included.
-  var s1Headers = [Label+' SKU','Trajectory'].concat(qtrLabels).concat(['Total since Q1 2025','FY '+PRIOR_YEAR,'YTD '+nowYr,'YTD Change','% of Usage']);
+  // 'Total since <first quarter>' mirrors the Total row now closing each card's quarterly
+  // table — it's the sum of the quarter columns to its left, partial quarter included. The
+  // quarter is named rather than hardcoded because the column series is clamped to the
+  // feed's own coverage (see procColumnCoverage), so it is not always Q1 2025.
+  var s1Headers = [Label+' SKU','Trajectory'].concat(qtrLabels).concat(['Total since '+quarterLabel(displayQtrs[0]),'FY '+PRIOR_YEAR,'YTD '+nowYr,'YTD Change','% of Usage']);
+  // 0 or 1 rows, so a workbook with a full baseline keeps exactly the blank line it had.
+  var s1Note = (!cov.hasBaseline && cov.firstSeen)
+    ? [[Label+' consumption has only been recorded since '+cov.sinceStr+', so there is no comparable '+(nowYr-1)+' window to measure against and Trajectory reads "No baseline" throughout.'
+        + ' A trajectory here would describe the tracking rather than the '+Label.toLowerCase()+'. YTD '+nowYr+' likewise covers '+cov.dayCount+' day'+(cov.dayCount===1?'':'s')+' of data, not the year.']]
+    : [];
   var s1Rows = [
     ['DTF Operations Center — Procurement Export'],
-    [Label+' usage  ·  Q1 2025 → present  ·  Generated '+dateStr],
+    [Label+' usage  ·  '+covScope+'  ·  Generated '+dateStr]
+  ].concat(s1Note).concat([
     [],
     s1Headers
-  ];
+  ]);
 
   summaryData.forEach(function(d) {
     var row = [d.sku, d.tag].concat(d.qVals).concat([
@@ -11343,13 +11421,14 @@ function exportProcurement() {
   var w1 = [{wch:30},{wch:13}].concat(displayQtrs.map(function(){return{wch:13};})).concat([{wch:19},{wch:14},{wch:12},{wch:12},{wch:12}]);
   ws1['!cols'] = w1;
   ws1['!merges'] = [{s:{r:0,c:0},e:{r:0,c:s1Headers.length-1}},{s:{r:1,c:0},e:{r:1,c:s1Headers.length-1}}];
+  if (s1Note.length) ws1['!merges'].push({s:{r:2,c:0},e:{r:2,c:s1Headers.length-1}});
   XLSX.utils.book_append_sheet(wb, ws1, 'Quarterly Summary');
 
   // ── Sheet 2: Lot Detail ──
   var detailHeaders = ['Date','Lot #',Label+' SKU','Customer','Product','Line','Projected Units','Final Units','Deviation %','Status'];
   var s2Rows = [
     ['DTF Operations Center — Lot Detail by '+Label+' SKU'],
-    ['All lots from Q1 2025 onward  ·  Sorted by date descending  ·  Generated '+dateStr],
+    ['All lots from '+quarterLabel(displayQtrs[0])+' onward  ·  Sorted by date descending  ·  Generated '+dateStr],
     [],
     detailHeaders
   ];
@@ -14778,6 +14857,47 @@ function renderOrdersSummary() {
   content.innerHTML = viewHTML;
 }
 
+// When did this procurement column start carrying data, and is that early enough for a
+// prior-year comparison to mean anything?
+//
+// The trajectory tag was derived purely from `ytd25Units > 0`, so a column the sheet only
+// started recording last week tagged every SKU "New" — a true statement about the feed and a
+// false one about the business: the scoop sizes are ten years old, the tracking is eight days
+// old. Same root cause drew seven empty quarters in the sparkline and put "Q1 2025 → present"
+// on a header covering four days of data. All three read this instead of asserting a history
+// the feed does not have.
+//
+// hasBaseline is quarter-granular against the START of the comparison window, not its end.
+// Two boundaries, both deliberate:
+//   - against the START, because a window the column only joined halfway through under-counts
+//     the prior-year figure, and every SKU then reads "Up" against it. Testing the end instead
+//     would hand scoops a bogus baseline on Jan 1 2027 off four months of 2026 data.
+//   - by QUARTER, not by day, because the columns that DO have full history start on the
+//     year's first production day (Jan 6 2025, not Jan 1) — a day-exact test would fail
+//     jars, bottles, lids, desiccants and neckbands too, which is the opposite mistake.
+//
+// dayCount counts distinct days that carry data, not the span: scoops span 8 calendar days
+// but only ran on 4 of them, and the span reads as more evidence than there is.
+function procColumnCoverage(rows, getSku, cutoff, windowStart) {
+  var first = null, days = {}, n = 0;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (!(r['Lot Number'] || '').trim()) continue;
+    if (!getSku(r)) continue;
+    var dt = new Date(r['Date']);
+    if (isNaN(dt) || dt < cutoff) continue;
+    if (first === null || dt < first) first = dt;
+    var dk = dateKey(dt);
+    if (!days[dk]) { days[dk] = true; n++; }
+  }
+  return {
+    firstSeen: first,
+    dayCount: n,
+    hasBaseline: first !== null && getQuarterKey(first) <= getQuarterKey(windowStart),
+    sinceStr: first === null ? '' : first.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+  };
+}
+
 function renderProcurement() {
   // The unforced calls cover a first visit (nothing loaded yet); refreshStockFeedsIfStale
   // covers arriving with data that loaded a long time ago, which the loaded flags alone
@@ -14786,12 +14906,13 @@ function renderProcurement() {
   var now = new Date();
   var curQk = getQuarterKey(now);
   var cutoff = new Date(TRACKING_START);
-  var col = procView === 'jars' ? 'jarSize' : procView === 'bottles' ? 'bottleSize' : procView === 'lids' ? 'lidSize' : procView === 'desiccants' ? 'desiccant' : 'neckband';
-  var label = procView === 'jars' ? 'jar' : procView === 'bottles' ? 'bottle' : procView === 'lids' ? 'lid' : procView === 'desiccants' ? 'desiccant' : 'neckband';
-  var Label = procView === 'jars' ? 'Jar' : procView === 'bottles' ? 'Bottle' : procView === 'lids' ? 'Lid' : procView === 'desiccants' ? 'Desiccant' : 'Neckband';
+  var col = procView === 'jars' ? 'jarSize' : procView === 'bottles' ? 'bottleSize' : procView === 'lids' ? 'lidSize' : procView === 'scoops' ? 'scoop' : procView === 'desiccants' ? 'desiccant' : 'neckband';
+  var label = procView === 'jars' ? 'jar' : procView === 'bottles' ? 'bottle' : procView === 'lids' ? 'lid' : procView === 'scoops' ? 'scoop' : procView === 'desiccants' ? 'desiccant' : 'neckband';
+  var Label = procView === 'jars' ? 'Jar' : procView === 'bottles' ? 'Bottle' : procView === 'lids' ? 'Lid' : procView === 'scoops' ? 'Scoop' : procView === 'desiccants' ? 'Desiccant' : 'Neckband';
 
   var isDes = procView === 'desiccants';
   var isNeck = procView === 'neckbands';
+  var isScoop = procView === 'scoops';
 
   function getSku(r) {
     if (procView === 'lids') {
@@ -14800,6 +14921,7 @@ function renderProcurement() {
     }
     if (isDes)  { var dv = (r['Desiccant']||'').trim(); return /^(none|n\/a)$/i.test(dv) ? '' : dv; }
     if (isNeck) { var nv = (r['Neckband Used']||'').trim(); return /^(none|n\/a)$/i.test(nv) ? '' : nv; }
+    if (isScoop) { var sv = (r['Scoop']||'').trim(); return /^(none|n\/a)$/i.test(sv) ? '' : sv; }
     return normMatName((r[procView === 'jars' ? 'Jar Size' : 'Bottle Size']||'').trim());
   }
 
@@ -14842,18 +14964,30 @@ function renderProcurement() {
       if (!skuCust[sku][cust]) skuCust[sku][cust] = {units:0, lots:new Set(), products:{}};
       skuCust[sku][cust].units += u;
       skuCust[sku][cust].lots.add(lot);
-      skuCust[sku][cust].products[prod] = (skuCust[sku][cust].products[prod]||0) + u;
+      // Per product: units AND the distinct lots behind them, so the expanded breakdown can
+      // show a lot count per product the way the Materials drill does. Was a bare running
+      // total, which could only ever produce a chip.
+      if (!skuCust[sku][cust].products[prod]) skuCust[sku][cust].products[prod] = {units:0, lots:new Set()};
+      skuCust[sku][cust].products[prod].units += u;
+      skuCust[sku][cust].products[prod].lots.add(lot);
     }
   });
 
-  // Build all quarters Q1 2025 → current
-  var displayQtrs = [];
-  var dq = new Date(TRACKING_START);
-  while (getQuarterKey(dq) <= curQk) { displayQtrs.push(getQuarterKey(dq)); dq.setMonth(dq.getMonth()+3); }
-
-  // Build SKU results
   var ytd25cutoff = new Date(nowYr-1, now.getMonth(), now.getDate(), 23, 59, 59);
   var ytd25start  = new Date(nowYr-1, 0, 1);
+  var cov = procColumnCoverage(allRowsCombined, getSku, cutoff, ytd25start);
+
+  // Build all quarters the column actually covers → current. Clamped to the first quarter
+  // carrying data rather than always starting at TRACKING_START: seven empty sparkline bars
+  // in front of one filled one read as a product that died, not as a feed that just started.
+  // Everything downstream of displayQtrs follows — the quarterly table, and the all-time
+  // rollup, whose % denominator is now the covered quarters rather than quarters nobody was
+  // recording in.
+  var qStart = cov.firstSeen ? new Date(cov.firstSeen.getFullYear(), Math.floor(cov.firstSeen.getMonth()/3)*3, 1) : new Date(TRACKING_START);
+  if (qStart < new Date(TRACKING_START)) qStart = new Date(TRACKING_START);
+  var displayQtrs = [];
+  var dq = new Date(qStart);
+  while (getQuarterKey(dq) <= curQk) { displayQtrs.push(getQuarterKey(dq)); dq.setMonth(dq.getMonth()+3); }
 
   // Total YTD for % of usage
   var totalYtdUnits = 0, totalYtd25Units = 0;
@@ -14930,15 +15064,26 @@ function renderProcurement() {
     var ytdPct25 = totalYtd25Units > 0 ? parseFloat(((ytd25Units / totalYtd25Units) * 100).toFixed(1)) : null;
     var ytdChg   = ytd25Units > 0 ? (ytdUnits - ytd25Units) / ytd25Units * 100 : null;
 
-    // Tag based on YTD comparison
-    var tag = ytd25Units > 0
+    // Tag based on YTD comparison. 'nobase' is a statement about the FEED, and it outranks
+    // the others: where the column was not being recorded across the comparison window, no
+    // SKU can have a prior-year figure, so "New" would be printed on every row — which is
+    // how these ten-year-old scoop sizes came to be labelled brand new. 'new' survives for
+    // the columns that do have history, where it means what it says.
+    var tag = !cov.hasBaseline
+      ? 'nobase'
+      : ytd25Units > 0
       ? (ytdChg > 5 ? 'up' : ytdChg < -5 ? 'down' : 'flat')
       : 'new';
 
     // Customer breakdown
     var custBreakdown = skuCust[sku] ? Object.entries(skuCust[sku]).map(function(e) {
+      // No slice: the row is expandable now, so every product is reachable. It used to cut
+              // to the top 5 and drop the rest silently — Alpha Lion showed 5 of its products
+              // against 75 lots, with no indication anything was missing.
       return {cust:e[0], units:e[1].units, lots:e[1].lots.size,
-              products:Object.entries(e[1].products).sort(function(a,b){return b[1]-a[1];}).slice(0,5)};
+              products:Object.keys(e[1].products).map(function(k){
+                return {name:k, units:e[1].products[k].units, lots:e[1].products[k].lots.size};
+              }).sort(function(a,b){ return b.units - a.units; })};
     }).sort(function(a,b){return b.units-a.units;}) : [];
 
     return {sku:sku, qtrs:qtrs, tag:tag, ytdLots:ytdLots.size, ytdUnits:ytdUnits,
@@ -14974,6 +15119,8 @@ function renderProcurement() {
   var rows = visibleResults.map(function(cd) {
     var sid = 'proc_' + safeid(cd.sku);
     var expanded = !!window._procExpanded[sid];
+    // 'nobase' falls through to the neutral grey. The blue 'new' rail drew the eye down a
+    // column of rows whose only shared property was that nothing is known about them yet.
     var borderColor = cd.tag==='up'?'#1D9E75':cd.tag==='down'?'#791F1F':cd.tag==='new'?'#378ADD':'#444441';
     var bar26Color  = cd.tag==='down'?'#791F1F':'#378ADD';
     var tagEl = cd.tag==='up'
@@ -14982,6 +15129,10 @@ function renderProcurement() {
       ? '<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px;background:#791F1F;color:#F09595;flex-shrink:0;">&#x2193; Down</span>'
       : cd.tag==='flat'
       ? '<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px;background:#2c2c2a;color:#888780;flex-shrink:0;">&#x2192; Flat</span>'
+      : cd.tag==='nobase'
+      // Names the missing DATA, not the SKU, and says so on hover — the whole defect here was
+      // a row asserting something about the product that only held for the feed.
+      ? '<span title="' + esc(Label + ' consumption has only been recorded since ' + cov.sinceStr + ' (' + cov.dayCount + ' day' + (cov.dayCount===1?'':'s') + ' of data), so there is no comparable ' + (nowYr-1) + ' window to measure against. This is a gap in the tracking, not a sign that this ' + label + ' is new.') + '" style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px;background:#2c2c2a;color:#5f5e5a;flex-shrink:0;cursor:help;">No baseline</span>'
       : '<span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px;background:#0C447C;color:#85B7EB;flex-shrink:0;">New</span>';
 
     var w25 = cd.ytd25Units ? Math.round((cd.ytd25Units/maxYtd)*100) : 0;
@@ -14997,7 +15148,15 @@ function renderProcurement() {
     // bars beside it for good. Deriving instead keeps the row geometry still and lets
     // the bars thin as history accumulates — down to SPARK_MIN_BAR, past which the
     // canvas does grow, because unreadable slivers would be worse than a wider cell.
+    //
+    // A one-quarter series draws NOTHING. Each bar is scaled against the SKU's own maximum,
+    // so a single bar is by definition that maximum: full height, and full canvas width once
+    // there are no gaps to subtract. Nine rows of identical 112x28 blue slabs, which is what
+    // clamping the series to the feed's coverage produced on Scoops. A sparkline needs two
+    // points before it can say anything, and a shape that cannot vary is worse than an empty
+    // slot — it reads as a chart whose values all happen to match.
     var SPARK_CANVAS = 112, SPARK_GAP = 3, SPARK_MIN_BAR = 4;
+    var sparkOn = cd.qtrs.length >= 2;
     var qn = cd.qtrs.length || 1;
     var sparkBarW = Math.max(SPARK_MIN_BAR, (SPARK_CANVAS - SPARK_GAP*(qn-1)) / qn);
     var sparkTotalW = qn*sparkBarW + SPARK_GAP*(qn-1);
@@ -15037,8 +15196,10 @@ function renderProcurement() {
         +'</div>'
         +(isDes||isNeck ? '<div>'+pctB(cd.ytdUnits, cd.ytd25Units, false)+'</div>' : (cd.ytdPct!==null?'<div>'+pctB(cd.ytdPct, cd.ytdPct25, false)+'</div>':'<div style="height:18px;"></div>'))
       +'</div>'
-      +'<div style="display:flex;align-items:flex-end;gap:'+SPARK_GAP+'px;height:28px;flex-shrink:0;margin-left:16px;width:'+sparkTotalW.toFixed(1)+'px;">'+sparkBars+'</div>'
-      +'<svg id="pc-'+sid+'" width="12" height="12" viewBox="0 0 12 12" fill="none" style="flex-shrink:0;margin-left:8px;transition:transform .15s;transform:'+(expanded?'rotate(180deg)':'')+'"><polyline points="2,4 6,8 10,4" stroke="#5f5e5a" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      +(sparkOn ? '<div style="display:flex;align-items:flex-end;gap:'+SPARK_GAP+'px;height:28px;flex-shrink:0;margin-left:16px;width:'+sparkTotalW.toFixed(1)+'px;">'+sparkBars+'</div>' : '')
+      // Takes over the sparkline's 16px gap when there is no sparkline, so the chevron does
+      // not end up hugging the percentage.
+      +'<svg id="pc-'+sid+'" width="12" height="12" viewBox="0 0 12 12" fill="none" style="flex-shrink:0;margin-left:'+(sparkOn?8:16)+'px;transition:transform .15s;transform:'+(expanded?'rotate(180deg)':'')+'"><polyline points="2,4 6,8 10,4" stroke="#5f5e5a" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     +'</div>';
 
     // Detail table
@@ -15051,7 +15212,13 @@ function renderProcurement() {
       for (var pi=idx-1; pi>=0; pi--) { if (cd.qtrs[pi].units>0){prevWithData=cd.qtrs[pi];break;} }
       var unitsDelta = '';
       if (prevWithData && q.units>0 && q.key!==curQk) unitsDelta = pctB(q.units, prevWithData.units, true);
-      else if (!prevWithData && q.units>0) unitsDelta = '<span style="display:inline-block;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:500;background:#0C447C;color:#85B7EB;">new</span>';
+      // The 'new' chip on a SKU's first quarter with data is the same claim as the row badge
+      // and needs the same guard: with no baseline it marks the quarter the FEED started, so
+      // it would reprint "new" inside the drilldown of a scoop that has run for years. Left
+      // to fall through, which lands the current quarter on 'In progress' — the accurate
+      // label for the only quarter scoops have — and leaves an older first quarter blank,
+      // there being no prior quarter to compare it against.
+      else if (!prevWithData && q.units>0 && cov.hasBaseline) unitsDelta = '<span style="display:inline-block;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:500;background:#0C447C;color:#85B7EB;">new</span>';
       else if (q.key===curQk && q.units>0) unitsDelta = '<span style="font-size:10px;color:#5f5e5a;">In progress</span>';
       var prevPct = null;
       for (var ci=idx-1; ci>=0; ci--) { if (cd.qtrs[ci].pctOfTotal!==null){prevPct=cd.qtrs[ci].pctOfTotal;break;} }
@@ -15076,6 +15243,11 @@ function renderProcurement() {
 
     var procDataObj = {
       sku: cd.sku, type: label,
+      // The synopsis opened with "We started using <sku> in Q3 2026" whenever there was no
+      // prior-year figure — the same false claim as the New badge, only spelled out in a
+      // sentence. It needs the coverage verdict to tell "this SKU is new" from "this column
+      // is new", and cannot recompute it: it reads only this object out of the DOM.
+      hasBaseline: cov.hasBaseline, trackedSince: cov.sinceStr,
       ytdUnits: cd.ytdUnits, ytd25Units: cd.ytd25Units,
       ytdLots: cd.ytdLots, ytd25Lots: cd.ytd25Lots,
       ytdPct: cd.ytdPct, ytdPct25: cd.ytdPct25,
@@ -15087,26 +15259,76 @@ function renderProcurement() {
     // Customer + product breakdown HTML
     var totalCustUnits = cd.custBreakdown.reduce(function(s,c){return s+c.units;},0) || 1;
     var maxCustUnits = cd.custBreakdown.length ? cd.custBreakdown[0].units : 1;
-    var custRows = cd.custBreakdown.map(function(c) {
+    // Customer rows are accordions, matching the Materials panel: click one and its full
+    // product list opens beneath it. It used to print the top 5 products as one line of
+    // chips and drop the rest with nothing to say so — Alpha Lion showed 5 products against
+    // 75 lots, and the omission was invisible.
+    //
+    // The product block is rendered hidden rather than built on click, the same way
+    // matToggleLot works. This whole panel only renders when its SKU row is expanded, so
+    // the markup is bounded, and a pure display toggle keeps the open/closed state out of
+    // the render path.
+    var unitsHdr = isDes ? 'Desiccants' : isNeck ? 'Neckbands' : isScoop ? 'Scoops' : 'Units';
+    var custRows = cd.custBreakdown.map(function(c, ci) {
       var barW = Math.round((c.units / maxCustUnits) * 100);
       var pct = ((c.units / totalCustUnits) * 100).toFixed(1);
-      var prodList = c.products.map(function(p){
-        var prodName = p[0].indexOf('-') !== -1 ? p[0].split('-').slice(1).join('-').trim() : p[0];
-        return '<span style="font-size:10px;color:#5f5e5a;white-space:nowrap;">'+esc(prodName)
-          +' <span style="color:#444441;">'+p[1].toLocaleString()+'</span></span>';
-      }).join('<span style="color:#2c2c2a;margin:0 4px;">·</span>');
+      var rowId = sid + '-c' + ci;
+      var open = !!(window._procCustOpen && window._procCustOpen[rowId]);
+      var maxProd = c.products.length ? c.products[0].units : 1;
+
+      var prodRows = c.products.map(function(p) {
+        // "Customer - Product" throughout; the customer is the row above, so only the
+        // product half belongs in here.
+        var nm = p.name.indexOf('-') !== -1 ? p.name.split('-').slice(1).join('-').trim() : p.name;
+        var pw = Math.round((p.units / maxProd) * 100);
+        var pShare = c.units ? ((p.units / c.units) * 100).toFixed(1) : '0.0';
+        var tdP = 'padding:5px 10px;border-bottom:0.5px solid #232326;font-size:11px;white-space:nowrap;';
+        return '<tr>'
+          + '<td style="' + tdP + 'color:#c9c7c1;white-space:normal;word-break:break-word;line-height:1.35;">' + esc(nm || '(unnamed)') + '</td>'
+          + '<td style="' + tdP + 'text-align:right;color:#e8e6e0;font-variant-numeric:tabular-nums;">' + p.units.toLocaleString() + '</td>'
+          + '<td style="' + tdP + 'text-align:right;color:#888780;font-variant-numeric:tabular-nums;">' + p.lots + '</td>'
+          + '<td class="pnl-bar-cell" style="' + tdP + 'padding-right:14px;width:120px;">'
+            + '<div style="display:flex;align-items:center;gap:6px;">'
+              + '<div class="pnl-bar" style="flex:1;background:#2c2c2a;border-radius:2px;height:4px;overflow:hidden;">'
+                + '<div style="height:100%;width:' + pw + '%;background:#378ADD;border-radius:2px;opacity:.7;"></div>'
+              + '</div>'
+              + '<span style="font-size:10px;color:#5f5e5a;width:34px;text-align:right;">' + pShare + '%</span>'
+            + '</div>'
+          + '</td>'
+        + '</tr>';
+      }).join('');
+
+      var thP = 'text-align:right;padding:4px 10px;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:#5f5e5a;font-weight:500;white-space:nowrap;';
+      var prodBlock = c.products.length
+        ? '<div class="proc-cust-prods" id="pcp-' + rowId + '" style="display:' + (open ? 'block' : 'none') + ';margin:4px 0 2px 14px;border-left:2px solid #378ADD;background:#151719;">'
+            + '<div class="pnl-sub-scroll" style="overflow-x:auto;">'
+            + '<table class="pnl-sub-table pnl-on-card" style="width:100%;border-collapse:separate;border-spacing:0;">'
+            + '<thead><tr>'
+              + '<th style="' + thP + 'text-align:left;">Product</th>'
+              + '<th style="' + thP + '">' + esc(unitsHdr) + '</th>'
+              + '<th style="' + thP + '">Lots</th>'
+              + '<th class="pnl-bar-cell" style="' + thP + 'padding-right:14px;">Share</th>'
+            + '</tr></thead>'
+            + '<tbody>' + prodRows + '</tbody>'
+            + '</table></div></div>'
+        : '';
+
+      var chev = '<span id="pcv-' + rowId + '" style="display:inline-block;color:#5f5e5a;font-size:9px;transition:transform .15s;transform:rotate(' + (open ? 90 : 0) + 'deg);margin-right:5px;">&#9654;</span>';
+      var canOpen = c.products.length > 0;
       return '<div style="padding:8px 14px;border-bottom:0.5px solid #2c2c2a;">'
-        +'<div class="proc-cust-row" style="display:flex;align-items:center;gap:10px;margin-bottom:5px;">'
-          +'<div style="font-size:12px;font-weight:500;color:#e8e6e0;width:140px;flex-shrink:0;">'+esc(c.cust)+'</div>'
-          +'<div class="pnl-bar" style="flex:1;height:5px;background:#2c2c2a;border-radius:2px;overflow:hidden;">'
-            +'<div style="height:100%;width:'+barW+'%;background:#378ADD;border-radius:2px;opacity:.7;"></div>'
-          +'</div>'
-          +'<div style="font-size:11px;color:#e8e6e0;font-weight:500;width:80px;text-align:right;flex-shrink:0;">'+c.units.toLocaleString()+'</div>'
-          +'<div style="font-size:10px;color:#888780;width:36px;text-align:right;flex-shrink:0;">'+c.lots+' lot'+(c.lots!==1?'s':'')+'</div>'
-          +'<div style="font-size:10px;font-weight:500;color:#888780;width:36px;text-align:right;flex-shrink:0;">'+pct+'%</div>'
-        +'</div>'
-        +(prodList ? '<div class="proc-cust-prods" style="padding-left:150px;display:flex;flex-wrap:wrap;gap:4px;">'+prodList+'</div>' : '')
-      +'</div>';
+        + '<div class="proc-cust-row"' + (canOpen ? ' onclick="toggleProcCust(' + jsStr(rowId) + ')"' : '')
+          + ' style="display:flex;align-items:center;gap:10px;' + (canOpen ? 'cursor:pointer;' : '') + '">'
+          + '<div style="font-size:12px;font-weight:500;color:#e8e6e0;width:140px;flex-shrink:0;">' + (canOpen ? chev : '') + esc(c.cust) + '</div>'
+          + '<div class="pnl-bar" style="flex:1;height:5px;background:#2c2c2a;border-radius:2px;overflow:hidden;">'
+            + '<div style="height:100%;width:' + barW + '%;background:#378ADD;border-radius:2px;opacity:.7;"></div>'
+          + '</div>'
+          + '<div style="font-size:11px;color:#e8e6e0;font-weight:500;width:80px;text-align:right;flex-shrink:0;">' + c.units.toLocaleString() + '</div>'
+          + '<div style="font-size:10px;color:#888780;width:54px;text-align:right;flex-shrink:0;">' + c.products.length + ' prod' + (c.products.length !== 1 ? 's' : '') + '</div>'
+          + '<div style="font-size:10px;color:#888780;width:36px;text-align:right;flex-shrink:0;">' + c.lots + ' lot' + (c.lots !== 1 ? 's' : '') + '</div>'
+          + '<div style="font-size:10px;font-weight:500;color:#888780;width:36px;text-align:right;flex-shrink:0;">' + pct + '%</div>'
+        + '</div>'
+        + prodBlock
+      + '</div>';
     }).join('');
 
     var custSection = custRows;
@@ -15136,7 +15358,7 @@ function renderProcurement() {
       +'<table class="pnl-sub-table" style="width:100%;border-collapse:collapse;">'
       +'<thead><tr>'
         +'<th style="'+thSL+'">Quarter</th>'
-        +'<th style="'+thS+'">'+(isDes?'Desiccants':isNeck?'Neckbands':'Units')+'</th>'
+        +'<th style="'+thS+'">'+(isDes?'Desiccants':isNeck?'Neckbands':isScoop?'Scoops':'Units')+'</th>'
         +'<th style="'+thS+'width:70px;">vs prev</th>'
         +'<th style="'+thS+'">Lots</th>'
         +'<th style="'+thS+'">% of total</th>'
@@ -15168,6 +15390,11 @@ function renderProcurement() {
   }).join('');
 
   var ytdLabelFull = now.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  // Keeps "Q1 2025 → present" for the columns that genuinely reach back that far, and states
+  // the real start date for the ones that do not, with the number of days behind it.
+  var covScope = (!cov.firstSeen || displayQtrs[0] === getQuarterKey(new Date(TRACKING_START)))
+    ? 'Q1 2025 \u2192 present'
+    : 'tracked since ' + cov.sinceStr + ' \u00b7 ' + cov.dayCount + ' day' + (cov.dayCount===1?'':'s') + ' of data';
   var procSearchHTML = '<div style="position:relative;display:inline-flex;align-items:center;">'
     +'<input id="procSearchInput" type="text" placeholder="Search '+label+'s…" oninput="filterProcurement()" value="'+esc(procSearch)+'" style="padding:4px 28px 4px 10px;border:0.5px solid #444441;border-radius:8px;background:#1e2124;color:#e8e6e0;font-size:12px;font-family:system-ui;width:220px;height:28px;">'
     +'<button id="procSearchClear" onclick="procSearch=\'\';document.getElementById(\'procSearchInput\').value=\'\';filterProcurement();" style="display:'+(procSearch?'flex':'none')+';position:absolute;right:6px;width:16px;height:16px;border-radius:50%;border:none;background:#444441;cursor:pointer;align-items:center;justify-content:center;padding:0;flex-shrink:0;">'
@@ -15177,7 +15404,14 @@ function renderProcurement() {
   document.getElementById('content').innerHTML =
     '<div class="proc-toolbar" style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:12px;">'
       +'<div>'
-        +'<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;">'+Label+' usage — Q1 2025 &#x2192; present &middot; sorted by YTD &middot; thru '+ytdLabelFull+'</div>'
+        +'<div style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.05em;">'+Label+' usage &mdash; '+esc(covScope)+' &middot; sorted by YTD &middot; thru '+ytdLabelFull+'</div>'
+        // Said once, here, rather than repeated down the rows: why every trajectory reads
+        // "No baseline". Only appears while that is actually the case.
+        +(!cov.hasBaseline && cov.firstSeen
+          ? '<div style="margin-top:5px;font-size:11px;color:#5f5e5a;max-width:640px;line-height:1.45;">'
+              +esc(Label+' consumption has only been recorded since '+cov.sinceStr+', so there is no comparable '+(nowYr-1)+' window yet. A trajectory here would describe the tracking rather than the '+label+', so none is shown.')
+            +'</div>'
+          : '')
         +((hiddenCount > 0 || showZeroDes)
           ? '<div style="margin-top:5px;"><label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#5f5e5a;cursor:pointer;user-select:none;">'
               +'<input type="checkbox" onchange="showZeroDes=this.checked;renderProcurement()" '+(showZeroDes?'checked':'')+' style="accent-color:#378ADD;cursor:pointer;">'
@@ -15222,7 +15456,7 @@ function toggleProcExportPopover(e) {
   closeProcExportPopover();
   var wrap = document.getElementById('proc-export-wrap');
   if (!wrap) return;
-  var labelPl = procView === 'jars' ? 'Jars' : procView === 'bottles' ? 'Bottles' : procView === 'lids' ? 'Lids' : procView === 'desiccants' ? 'Desiccants' : 'Neckbands';
+  var labelPl = procView === 'jars' ? 'Jars' : procView === 'bottles' ? 'Bottles' : procView === 'lids' ? 'Lids' : procView === 'scoops' ? 'Scoops' : procView === 'desiccants' ? 'Desiccants' : 'Neckbands';
   var now = new Date();
   var isDes  = procView === 'desiccants';
   var cutoff = new Date(TRACKING_START);
@@ -15232,6 +15466,7 @@ function toggleProcExportPopover(e) {
     if (procView==='lids') return normMatName([r['Lid Size'],r['Lid Color'],r['Lid Profile']].map(function(v){return(v||'').trim();}).filter(Boolean).join(' '));
     if (isDes)  { var dv=(r['Desiccant']||'').trim(); return /^(none|n\/a)$/i.test(dv)?'':dv; }
     if (procView==='neckbands') { var nv=(r['Neckband Used']||'').trim(); return /^(none|n\/a)$/i.test(nv)?'':nv; }
+    if (procView==='scoops') { var sv=(r['Scoop']||'').trim(); return /^(none|n\/a)$/i.test(sv)?'':sv; }
     return normMatName((r[procView==='jars'?'Jar Size':'Bottle Size']||'').trim());
   }
   function getUnits2(r) { return isDes ? num(r['Number of Desiccants Used']) : num(r['Final Units']); }
@@ -15523,7 +15758,7 @@ function exportMaterials() {
   var _opsN = 0;
   _opsOrder.forEach(function(p){ _opsN += _ops.groups[p].rows.length; });
   if (_opsN) {
-    var s5Headers = ['Picked On','Material','Part #','Production Lot','Brand','Product','Lots Pulled Instead','Their Expiries','Should Have Pulled T#','Its Expiry','Days Left Then','Months Apart (worst)','Run Needed','Swap Possible','Corrected','Outcome','Its Stock Now'];
+    var s5Headers = ['Picked On','Picked At','Material','Part #','Production Lot','Brand','Product','Lots Pulled Instead','Their Expiries','Should Have Pulled T#','Its Expiry','Days Left Then','Months Apart (worst)','Run Needed','Swap Possible','Corrected','Outcome','Its Stock Now'];
     var s5Rows = [
       ['FEFO pick opportunities — ' + _ops.P.label],
       ['Exported: '+dateStr+' · '+_opsN+' flagged pick'+(_opsN===1?'':'s')+' across '+_opsOrder.length+' material'+(_opsOrder.length===1?'':'s')
@@ -15562,6 +15797,7 @@ function exportMaterials() {
         var nm = _fefoOpsLotName(d.orderLot);
         s5Rows.push([
           _matExpDateStr(d.when),
+          d.whenTs != null ? _fefoOpsClock(d.whenTs) : '',
           g.material || '', d.part, d.orderLot || '',
           nm ? nm.brand : '', nm ? nm.product : '',
           d.pulled.map(function(pl){ return pl.lot; }).join(', '),
@@ -15580,7 +15816,7 @@ function exportMaterials() {
       });
     });
     var ws5 = XLSX.utils.aoa_to_sheet(s5Rows);
-    ws5['!cols'] = [{wch:12},{wch:40},{wch:10},{wch:15},{wch:20},{wch:38},{wch:12},{wch:14},{wch:20},{wch:12},{wch:14},{wch:13},{wch:12},{wch:14},{wch:12},{wch:12},{wch:13}];
+    ws5['!cols'] = [{wch:12},{wch:10},{wch:40},{wch:10},{wch:15},{wch:20},{wch:38},{wch:12},{wch:14},{wch:20},{wch:12},{wch:14},{wch:13},{wch:12},{wch:14},{wch:12},{wch:12},{wch:13}];
     ws5['!merges'] = [
       {s:{r:0,c:0},e:{r:0,c:s5Headers.length-1}},
       {s:{r:1,c:0},e:{r:1,c:s5Headers.length-1}},
