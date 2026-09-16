@@ -1058,6 +1058,20 @@ var materialsData = [];
 var pickRows = [];           // [{ date, orderLot, part, material, slots:[{t, qty}] }]
 var inventoryByPart = {};    // DTF Part # -> { partNum, stock, material, lots, lotRows[] } — summed on-hand plus the per-lot detail
 var inventoryLotIndex = {};  // T# (upper) -> { part, qty, exp, received } for EVERY lot incl. depleted — FEFO needs the picked lot's expiry
+// Impossible-stock audit, rebuilt by parseInventory: { over:[], blindLots:[], blind:0, checked:0 }.
+// `over` holds lots recorded as holding more than was ever received — see the note on
+// parseInventory. Cached alongside inventoryByPart, because parseInventory does not
+// re-run on a cache hit and an alarm that goes quiet for the cache TTL is worse than
+// no alarm at all.
+var inventoryStockAudit = { over: [], blindLots: [], blind: 0, checked: 0 };
+// Float noise only. NOT a materiality floor: the rule is the one the sheet states —
+// stock above the received quantity is impossible at any size. Today's four findings
+// are 9.8-15.2 kg over (1.2x to 2.2x), so nothing sits near this line; if re-weighed
+// drums ever start landing a hair above nominal, that is the evidence for adding a
+// real floor here rather than a reason to guess at one now.
+var STOCK_OVERAGE_EPS = 0.01;
+var _stockOveragesOpen = false;
+var _stockBlindOpen = false;   // the lots with no usable Original Qty Received, under the "cannot be checked" text
 var inventoryLoaded = false; // true once a successful inventory fetch has populated inventoryByPart
 var demandByPart = {};       // DTF Part # -> forthcoming demand in KG, summed across the demand sheet
 var demandLoaded = false;    // true once a successful demand fetch has populated demandByPart
@@ -1065,7 +1079,7 @@ var demandLoaded = false;    // true once a successful demand fetch has populate
 // on re-navigation and page refresh, instead of re-waiting on Google's slow
 // published-CSV endpoint (the inventory sheet can take 15-60s to regenerate cold).
 var STOCK_CACHE_TTL = 10 * 60 * 1000; // 10 min — inventory/demand change slowly
-var INVENTORY_CACHE_KEY = 'dtf_inventory_cache_v7';  // v7: carries archiveLots, so the broken-archive warning survives a cache hit; v6 put `category` on part records for Raw vs Flavors; v5 added archived lots to lotIndex; v4 discarded pre-size-guard payloads
+var INVENTORY_CACHE_KEY = 'dtf_inventory_cache_v9';  // v9: the audit carries blindLots, not just a count — a v8 payload would open an empty list; v8: carries the impossible-stock audit, which parseInventory does not re-run to rebuild on a cache hit; v7: carries archiveLots, so the broken-archive warning survives a cache hit; v6 put `category` on part records for Raw vs Flavors; v5 added archived lots to lotIndex; v4 discarded pre-size-guard payloads
 var DEMAND_CACHE_KEY = 'dtf_demand_cache_v1';
 var lotIndex = {};           // lot number -> { combined, brand, product } populated from the Lot # reference sheets
 var lotIndexLoaded = false;
@@ -2368,12 +2382,33 @@ function parseInvDate(v) {
 //     so the old "Ready To Archive" check here never fired. Dropped rather than left
 //     as a comforting no-op; if that filter is ever removed from the sheet, this needs
 //     to come back for real.
+//
+// It also runs the IMPOSSIBLE-STOCK audit, because this is the only pass that sees
+// every row. "Original Qty Received" is what came in the door, and stock only ever
+// falls from there, so a lot recorded as holding MORE than it was received with is not
+// a slow-moving lot — it is a broken number. A pick logged against the wrong T#, a
+// receiving entry short of the real delivery, a formula off by a row. Everything built
+// on that lot is wrong with it: on hand, Available, Cover, the FEFO walk, the expiry
+// exposure. Three points that decide what gets flagged:
+//   • Checked against the HIGHER of Start Day Stock and Current Stock. Either one above
+//     the received quantity is impossible, and a lot can be drawn to zero by the
+//     afternoon — checking current stock alone would let a lot that began the day
+//     impossible clear itself simply by being consumed.
+//   • A blank or sentinel original is NOT checkable and is never flagged. The feed
+//     serves #N/A and #VALUE! while the tab recalculates, and num() turns both into 0,
+//     which would read as "received nothing" and put a code red on every lot in the
+//     building. A cell with no digit in it stays null. Same rule as startQty below.
+//   • An original of 0 is counted blind too. A genuine zero receipt holding stock is
+//     the same defect, but here it is indistinguishable from a placeholder, and a false
+//     alarm costs more than a missed one on a board nobody has learned to trust yet.
+//     Blind lots are counted and stated, not silently dropped.
 function parseInventory(text) {
   if (!text) return {};
   try {
     var rows = parseCSVMultiline(text);
     var byPart = {};
     var _catTally = {};
+    var _audit = { over: [], blindLots: [], checked: 0 };
     inventoryLotIndex = {};
     rows.forEach(function(r){
       var part = (r['DTF Part #'] || '').trim();
@@ -2395,6 +2430,44 @@ function parseInventory(text) {
       p.stock += qty;
       var lotNo = (r['DTF Lot #'] || '').trim();
       if (lotNo) p.lots += 1;
+      // Hoisted out of the lot-index block below: the audit needs the same raw cell, and
+      // parsing it twice invites the two readings drifting apart.
+      var sdRaw = (r['Start Day Stock'] == null ? '' : String(r['Start Day Stock'])).trim();
+      var sdQty = /[0-9]/.test(sdRaw) ? num(sdRaw) : null;
+      if (lotNo) {
+        var origRaw = (r['Original Qty Received'] == null ? '' : String(r['Original Qty Received'])).trim();
+        var origQty = /[0-9]/.test(origRaw) ? num(origRaw) : null;
+        var peak = Math.max(qty, sdQty == null ? 0 : sdQty);
+        if (origQty != null && origQty > 0) {
+          _audit.checked++;
+          if (peak - origQty > STOCK_OVERAGE_EPS) {
+            _audit.over.push({
+              part: part, material: (r['Material Name'] || '').trim(), lot: lotNo,
+              cur: qty, start: sdQty, orig: origQty, over: peak - origQty,
+              loc: (r['Locations'] || '').trim(), received: (r['Receiving Date'] || '').trim(),
+              supplier: (r['Supplier/MFG'] || '').trim(), batch: (r['Lot / Batch'] || '').trim()
+            });
+          }
+        } else if (peak > 0) {
+          // Collected, not just counted. "1 lot cannot be checked" against 1,000+ rows of
+          // inventory is a fact with no route to it — finding the blank meant scrolling the
+          // sheet. The verbatim cell rides along because the four ways a lot lands here need
+          // four different actions, and only the cell distinguishes them: an empty cell is a
+          // number to enter, a sentinel is Google still recalculating (it fixes itself, so
+          // nobody should be sent to the sheet for it), text is a typo to correct, and a
+          // literal 0 is a placeholder someone meant to come back to.
+          _audit.blindLots.push({
+            part: part, material: (r['Material Name'] || '').trim(), lot: lotNo,
+            cur: qty, start: sdQty, held: peak, raw: origRaw,
+            reason: origRaw === '' ? 'empty'
+                  : _sentinelRe.test(origRaw) ? 'sentinel'
+                  : origQty == null ? 'unreadable'
+                  : origQty < 0 ? 'negative' : 'zero',
+            loc: (r['Locations'] || '').trim(), received: (r['Receiving Date'] || '').trim(),
+            supplier: (r['Supplier/MFG'] || '').trim(), batch: (r['Lot / Batch'] || '').trim()
+          });
+        }
+      }
       // Every lot, depleted included: FEFO detection has to know the expiry of the
       // lot that was actually picked, and that one is usually spent by now.
       if (lotNo) {
@@ -2405,11 +2478,10 @@ function parseInventory(text) {
         // #VALUE! while the tab recalculates, and num() turns both into 0, which would read
         // as "this lot was empty all morning" and silently suppress real findings. A cell
         // with no digit in it stays null, and null means "fall back to current stock".
-        var sdRaw = (r['Start Day Stock'] == null ? '' : String(r['Start Day Stock'])).trim();
         inventoryLotIndex[lotNo.toUpperCase()] = {
           part: part, qty: qty, exp: xd ? xd.getTime() : null,
           received: (r['Receiving Date'] || '').trim(),
-          startQty: /[0-9]/.test(sdRaw) ? num(sdRaw) : null
+          startQty: sdQty
         };
       }
       if (!p.material && r['Material Name']) p.material = (r['Material Name'] || '').trim();
@@ -2438,6 +2510,14 @@ function parseInventory(text) {
       var t = _catTally[pk];
       byPart[pk].category = (t['2'] >= t['1']) ? '2' : '1';
     });
+    // Worst overage first — the size of the gap is the size of the problem.
+    _audit.over.sort(function(a, b){ return b.over - a.over; });
+    // Unverifiable lots by the quantity standing behind them: the kg is what is actually
+    // at stake in not knowing, and a sentinel row sorts in with the rest rather than to
+    // the top, because it needs no action at all.
+    _audit.blindLots.sort(function(a, b){ return b.held - a.held; });
+    _audit.blind = _audit.blindLots.length;
+    inventoryStockAudit = _audit;
     return byPart;
   } catch (e) { return {}; }
 }
@@ -2551,7 +2631,7 @@ function fetchInventoryIfNeeded(force) {
     _invFetching = false;
     // parseInventory rebuilds inventoryLotIndex as a side effect, so a rejected parse
     // must not leave its scraps behind for the FEFO detector.
-    var keepIndex = inventoryLotIndex;
+    var keepIndex = inventoryLotIndex, keepAudit = inventoryStockAudit;
     var parsed = parseInventory(t);
     if (_inventoryLooksComplete(parsed, inventoryByPart)) {
       inventoryByPart = parsed;
@@ -2569,11 +2649,12 @@ function fetchInventoryIfNeeded(force) {
       // returned nothing) while _archiveLots reverted to null, so the "archived lots not
       // loaded" warning stayed hidden — the coverage drop then read as fewer mispicks,
       // which is the exact misreading that warning exists to prevent.
-      try { sessionStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify({ byPart: parsed, lotIndex: inventoryLotIndex, archiveLots: _archiveLots, ts: Date.now() })); } catch(e) {}
+      try { sessionStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify({ byPart: parsed, lotIndex: inventoryLotIndex, archiveLots: _archiveLots, audit: inventoryStockAudit, ts: Date.now() })); } catch(e) {}
       _invRejects = 0;
       if (mainSection === 'procurement' && procView === 'materials') renderMaterials();
     } else {
       inventoryLotIndex = keepIndex;
+      inventoryStockAudit = keepAudit;
       _fefoInvalidate();
       console.warn('Inventory fetch rejected: ' + Object.keys(parsed || {}).length
         + ' parts parsed (need at least ' + INVENTORY_MIN_PARTS + ' and 80% of the '
@@ -4251,7 +4332,7 @@ function _loadStockCaches() {
     var ri = sessionStorage.getItem(INVENTORY_CACHE_KEY);
     // Same size test on the way in: a cache is only as trustworthy as the fetch that
     // wrote it, and a gutted payload must not be able to survive a reload.
-    if (ri) { var ci = JSON.parse(ri); if (ci && ci.byPart && (Date.now() - (ci.ts || 0)) < STOCK_CACHE_TTL && _inventoryLooksComplete(ci.byPart, null)) { inventoryByPart = ci.byPart; inventoryLotIndex = ci.lotIndex || {}; inventoryLoaded = true; _stockHydratedFromCache = true; if (typeof ci.archiveLots === 'number') _archiveLots = ci.archiveLots; } }
+    if (ri) { var ci = JSON.parse(ri); if (ci && ci.byPart && (Date.now() - (ci.ts || 0)) < STOCK_CACHE_TTL && _inventoryLooksComplete(ci.byPart, null)) { inventoryByPart = ci.byPart; inventoryLotIndex = ci.lotIndex || {}; inventoryStockAudit = ci.audit || { over: [], blindLots: [], blind: 0, checked: 0 }; inventoryLoaded = true; _stockHydratedFromCache = true; if (typeof ci.archiveLots === 'number') _archiveLots = ci.archiveLots; } }
   } catch(e) {}
   try {
     var rd = sessionStorage.getItem(DEMAND_CACHE_KEY);
@@ -11513,7 +11594,7 @@ function generateProcSynopsis(sid) {
 // Neckbands panel. Mirrors matToggleLot: flip the block, rotate the chevron, and record
 // the state so a re-render (a refresh landing, the By quarter/By customer toggle) leaves
 // open rows open. Keyed on sid + row index, so two SKUs expanded at once keep their own.
-function toggleProcCust(rowId) {
+function toggleProcCust(rowId, sid) {
   if (!window._procCustOpen) window._procCustOpen = {};
   var block = document.getElementById('pcp-' + rowId);
   if (!block) return;
@@ -11523,6 +11604,71 @@ function toggleProcCust(rowId) {
   if (chev) chev.style.transform = willOpen ? 'rotate(90deg)' : 'rotate(0deg)';
   if (willOpen) window._procCustOpen[rowId] = true;
   else delete window._procCustOpen[rowId];
+  // sid is passed rather than parsed back out of rowId. It could be parsed — rowId is
+  // sid + '-c' + index and safeid() maps every non-alphanumeric to '_', so no sid holds
+  // a hyphen to confuse the split — but that is a property of safeid, not of this
+  // function, and it would break silently and remotely if safeid ever loosened.
+  if (sid) _syncProcExpandBtn(sid);
+}
+
+// ── Expand all / Collapse all, By customer ──────────────────────────────────
+// One SKU's customer rows are accordions and reading the whole product list meant
+// opening each one. These three drive a bulk toggle in the panel's tab bar.
+//
+// Truth lives in the DOM, not in a per-panel "expanded" flag. The product blocks
+// are rendered hidden and toggled by display (toggleProcCust), individual rows can
+// be opened and closed underneath the button, and a re-render replays _procCustOpen
+// — a separate flag would drift out of step with all three. Counting what is
+// actually open costs one querySelectorAll on a bounded, already-rendered panel.
+//
+// Only customers WITH products get a .proc-cust-prods block, so `total` is the
+// number of rows that can open, not the number of rows on screen. A SKU whose
+// customers all have empty product lists has nothing to expand and the button
+// hides itself rather than sitting there inert.
+function _procCustCounts(sid) {
+  var host = document.getElementById('pcust-' + sid);
+  if (!host) return null;
+  var blocks = host.querySelectorAll('.proc-cust-prods');
+  var open = 0, i;
+  for (i = 0; i < blocks.length; i++) { if (blocks[i].style.display !== 'none') open++; }
+  return { total: blocks.length, open: open, blocks: blocks };
+}
+
+function _procExpandBtnHTML(allOpen) {
+  return '<svg width="9" height="9" viewBox="0 0 10 10" fill="none" style="flex-shrink:0;transition:transform .15s;transform:rotate(' + (allOpen ? 90 : 0) + 'deg);">'
+    + '<polyline points="3,1.5 7,5 3,8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    + (allOpen ? 'Collapse all' : 'Expand all');
+}
+
+// Label follows the rows: all open reads Collapse all, anything else reads Expand
+// all, so the button always offers the move that changes something. Also hides
+// itself under By quarter, which has no accordions at all.
+function _syncProcExpandBtn(sid) {
+  var btn = document.getElementById('pcx-' + sid);
+  if (!btn) return;
+  var c = _procCustCounts(sid);
+  var onCust = (_procTab[sid] || 'qtr') === 'cust';
+  if (!onCust || !c || !c.total) { btn.style.display = 'none'; return; }
+  btn.style.display = 'inline-flex';
+  btn.innerHTML = _procExpandBtnHTML(c.open === c.total);
+}
+
+function toggleProcAllCust(sid) {
+  var c = _procCustCounts(sid);
+  if (!c || !c.total) return;
+  if (!window._procCustOpen) window._procCustOpen = {};
+  var willOpen = c.open !== c.total;
+  var i, rowId, chev;
+  for (i = 0; i < c.blocks.length; i++) {
+    rowId = c.blocks[i].id.slice(4); // strip the 'pcp-' prefix this id was built with
+    c.blocks[i].style.display = willOpen ? 'block' : 'none';
+    chev = document.getElementById('pcv-' + rowId);
+    if (chev) chev.style.transform = willOpen ? 'rotate(90deg)' : 'rotate(0deg)';
+    if (willOpen) window._procCustOpen[rowId] = true;
+    else delete window._procCustOpen[rowId];
+  }
+  trackEvent('proc_cust_expand_all', { sid: sid, action: willOpen ? 'expand' : 'collapse', rows: c.total });
+  _syncProcExpandBtn(sid);
 }
 
 function switchProcTab(sid, tab) {
@@ -11538,6 +11684,7 @@ function switchProcTab(sid, tab) {
   var navOff = 'padding:4px 12px;border-radius:6px;border:1.5px solid transparent;background:transparent;color:#888780;font-weight:400;font-size:12px;cursor:pointer;font-family:system-ui;';
   if (btnC) btnC.style.cssText = onC  ? navOn : navOff;
   if (btnQ) btnQ.style.cssText = !onC ? navOn : navOff;
+  _syncProcExpandBtn(sid);
 }
 
 function toggleProc(sid, skuName) {
@@ -13001,6 +13148,208 @@ function setMatInlineTab(v) {
 // verbatim so it can be found and corrected in the inventory sheet. Two problems
 // live here because they are fixed in the same place but need different actions:
 // "Unreadable" is a typo to correct, "Not recorded" is a date to enter.
+// ── Impossible stock: the alert, and the list behind it ─────────────────────
+// Deliberately louder than the Expiry-data line beside it, and unconditional. An
+// unreadable expiry date is a data-entry chore; a lot holding more than was ever
+// received means a number somewhere is wrong RIGHT NOW and every figure resting on
+// that lot is wrong with it. It cannot be dismissed, only fixed — the strip is
+// self-extinguishing, so correcting the sheet is what makes it go away.
+//
+// The count opens the list, for the same reason the expiry line does: naming a defect
+// without a route to it just moves the hunt onto the reader.
+// Quantities on these rows are per-material: kilograms for almost everything, softgel
+// counts for softgel SKUs (matUnit). Adding the two into one figure would produce a
+// number in no unit at all, so the totals are kept per unit and printed separately. In
+// practice today's list is all kg and this reads exactly as a plain sum would.
+function _auditQtyTotal(rows, key) {
+  var by = {}, order = [];
+  rows.forEach(function(o){
+    var u = matUnit(o.material);
+    if (by[u] == null) { by[u] = 0; order.push(u); }
+    by[u] += (o[key] || 0);
+  });
+  return order.map(function(u){ return fmtStockQty(by[u]) + ' ' + u; })
+              .join(' <span style="color:#3a3a38;">&middot;</span> ');
+}
+
+// The full word, not the table's "sg" shorthand: these panels are auto-layout with an
+// overflow-x wrapper, so there is room to spell it, and they follow the expanded lot
+// table (matLotTableHTML) rather than the fixed-width Materials grid. Each row is its
+// own material, so the unit is read per row.
+function stockOverageAlertHTML() {
+  var a = inventoryStockAudit || { over: [], blindLots: [], blind: 0, checked: 0 };
+  var n = a.over.length;
+  if (!n) return '';
+  var kgTxt = _auditQtyTotal(a.over, 'over');
+  var warn = '<svg width="17" height="17" viewBox="0 0 20 20" fill="none" style="flex-shrink:0;">'
+    + '<path d="M10 2.6 18.4 17H1.6L10 2.6Z" fill="#791F1F" stroke="#F09595" stroke-width="1.3" stroke-linejoin="round"/>'
+    + '<line x1="10" y1="7.6" x2="10" y2="11.6" stroke="#F09595" stroke-width="1.5" stroke-linecap="round"/>'
+    + '<circle cx="10" cy="14.2" r=".85" fill="#F09595"/></svg>';
+  return '<div style="display:flex;align-items:center;gap:11px;padding:11px 14px;margin:-4px 0 12px;'
+      + 'background:#241717;border:0.5px solid #4a2020;border-left:3px solid #F09595;border-radius:0 10px 10px 0;">'
+    + warn
+    + '<div style="flex:1;min-width:0;font-family:system-ui;">'
+      + '<div style="font-size:12px;font-weight:600;color:#F09595;letter-spacing:.01em;">'
+        + 'Stock exceeds the quantity received &mdash; ' + n + ' lot' + (n===1?'':'s') + '</div>'
+      + '<div style="font-size:11px;color:#a89490;margin-top:3px;line-height:1.45;">'
+        + '<span style="color:#cfcdc7;font-weight:500;">' + kgTxt + '</span> on hand that was never received. '
+        + 'On hand, Available, Cover, the expiry projection and the FEFO walk are all wrong on '
+        + (n===1?'this lot':'these lots') + ' until the inventory sheet is corrected.'
+        + (_blindCount() > 0 ? ' ' + blindLinkHTML('more') + '.' : '')
+      + '</div>'
+    + '</div>'
+    + '<button onclick="toggleStockOverages()" style="flex-shrink:0;padding:4px 11px;border-radius:6px;border:0.5px solid #6b2020;'
+      + 'background:#331A1A;color:#F09595;font-size:11px;font-weight:500;cursor:pointer;font-family:system-ui;white-space:nowrap;">'
+      + (_stockOveragesOpen ? 'Hide lots &#9652;' : 'Show lots &#9662;') + '</button>'
+  + '</div>';
+}
+
+function stockOveragePanelHTML() {
+  var a = inventoryStockAudit || { over: [] };
+  if (!a.over.length) return '';
+  var th = 'text-align:left;padding:4px 10px;font-size:10px;color:#5f5e5a;font-weight:500;font-family:system-ui;white-space:nowrap;';
+  var thR = th.replace('text-align:left', 'text-align:right');
+  var rows = a.over.map(function(o){
+    var td = 'padding:5px 10px;font-size:11px;white-space:nowrap;';
+    // The ratio is what makes the size of the error legible at a glance: 2.2x reads as
+    // a different kind of mistake from 1.05x even when the kg happen to be similar.
+    var mult = o.orig > 0 ? (Math.max(o.cur, o.start == null ? 0 : o.start) / o.orig) : null;
+    var u = matUnit(o.material);
+    return '<tr style="border-bottom:0.5px solid #2c2c2a;">'
+      + '<td style="' + td + 'color:#e8e6e0;max-width:280px;overflow:hidden;text-overflow:ellipsis;">' + esc(o.material || '—') + '</td>'
+      + '<td style="' + td + 'color:#888780;">' + esc(o.part) + '</td>'
+      + '<td style="' + td + '">' + _blendCopyCell(o.lot) + '</td>'
+      + '<td style="' + td + 'text-align:right;color:#cfcdc7;">' + fmtStockQty(o.orig) + ' ' + u + '</td>'
+      + '<td style="' + td + 'text-align:right;color:#888780;">' + (o.start == null ? '—' : fmtStockQty(o.start) + ' ' + u) + '</td>'
+      + '<td style="' + td + 'text-align:right;color:#85B7EB;">' + fmtStockQty(o.cur) + ' ' + u + '</td>'
+      + '<td style="' + td + 'text-align:right;color:#F09595;font-weight:500;">+' + fmtStockQty(o.over) + ' ' + u
+        + (mult ? ' <span style="font-size:9px;color:#a06060;font-weight:400;">' + mult.toFixed(2) + '×</span>' : '') + '</td>'
+      + '<td style="' + td + 'color:#cfcdc7;">' + _matLocShort(o.loc) + '</td>'
+      + '<td style="' + td + 'padding-right:14px;text-align:right;color:#5f5e5a;">' + (o.received ? esc(o.received) : '—') + '</td>'
+      + '</tr>';
+  }).join('');
+  return '<div style="background:#1e1414;border:0.5px solid #4a2020;border-left:3px solid #F09595;border-radius:0 10px 10px 0;margin:-6px 0 14px;overflow:hidden;">'
+    + '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:10px 14px;background:#241717;">'
+      + '<span style="font-size:11px;font-weight:500;color:#F09595;text-transform:uppercase;letter-spacing:.04em;">Impossible stock</span>'
+      + '<span style="font-size:11px;color:#888780;font-family:system-ui;">' + a.over.length + ' lot' + (a.over.length===1?'':'s')
+        + ' &middot; reconcile the lot against its receiving record in the Raw Material Inventory sheet; the dashboard picks up the correction on the next refresh</span>'
+      + '<button onclick="toggleStockOverages()" style="margin-left:auto;padding:3px 10px;border-radius:5px;border:0.5px solid #4a2020;background:transparent;color:#888780;font-size:11px;cursor:pointer;font-family:system-ui;">Hide</button>'
+    + '</div>'
+    + '<div style="overflow-x:auto;max-height:320px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;background:#1a1416;">'
+    + '<thead><tr style="border-bottom:0.5px solid #4a2020;">'
+      + '<th style="' + th + '">Material</th><th style="' + th + '">Part #</th><th style="' + th + '">Lot #</th>'
+      + '<th style="' + thR + '">Received</th><th style="' + thR + '">Start of day</th><th style="' + thR + '">Current</th>'
+      + '<th style="' + thR + '">Over by</th>'
+      + '<th style="' + th + '">Location</th>'
+      + '<th style="' + thR + 'padding-right:14px;">Received on</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+    + '</div>';
+}
+
+function toggleStockOverages() {
+  _stockOveragesOpen = !_stockOveragesOpen;
+  renderMaterials();
+}
+
+// ── Lots that cannot be checked ─────────────────────────────────────────────
+// The blind count used to be a tooltip. A tooltip that says "1 lot cannot be checked"
+// over a sheet of 1,000+ rows tells you a defect exists and then makes you find it by
+// hand — the same failure the expiry line's clickable counts exist to avoid. It reads
+// as a link and opens the list.
+//
+// Stated in two places and both are load-bearing: appended to the impossible-stock
+// alert when that alert is up, and standing on its own when it is not. Nested only in
+// the alert, the coverage gap would vanish the moment the last overage was corrected —
+// the check would go quiet exactly when someone started trusting it.
+function _blindCount() {
+  var a = inventoryStockAudit || {};
+  // blind survives from an older cached payload that had the count but not the rows;
+  // the list is what is actually clickable, so prefer it when it is there.
+  return (a.blindLots && a.blindLots.length) || a.blind || 0;
+}
+
+function blindLinkHTML(word) {
+  var n = _blindCount();
+  if (!n) return '';
+  var clickable = !!(inventoryStockAudit && inventoryStockAudit.blindLots && inventoryStockAudit.blindLots.length);
+  var label = n + (word ? ' ' + word : '') + ' lot' + (n===1?'':'s') + ' cannot be checked';
+  if (!clickable) {
+    return '<span title="These lots hold stock but carry no usable Original Qty Received, so they cannot be checked either way."'
+      + ' style="color:#888780;border-bottom:1px dotted #444441;cursor:help;">' + label + '</span>';
+  }
+  return '<span onclick="toggleStockBlind()"'
+    + ' title="These lots hold stock but carry no usable Original Qty Received, so they cannot be checked either way. Click to list them."'
+    + ' style="color:#888780;border-bottom:1px dotted #444441;cursor:pointer;">'
+    + label + (_stockBlindOpen ? ' \u25b4' : ' \u25be') + '</span>';
+}
+
+// Amber, not red, and a row here is not an error. It is stock the check cannot see
+// past, so it gets the colour of an open question rather than the colour of a wrong
+// number — the panel above it is the one saying something is broken.
+function stockBlindPanelHTML() {
+  var a = inventoryStockAudit || {};
+  var out = a.blindLots || [];
+  if (!out.length) return '';
+  var kgTxt = _auditQtyTotal(out, 'held');
+  var sentinels = out.filter(function(o){ return o.reason === 'sentinel'; }).length;
+  var th = 'text-align:left;padding:4px 10px;font-size:10px;color:#5f5e5a;font-weight:500;font-family:system-ui;white-space:nowrap;';
+  var thR = th.replace('text-align:left', 'text-align:right');
+  var rows = out.map(function(o){
+    var td = 'padding:5px 10px;font-size:11px;white-space:nowrap;';
+    // Each reason names the fix, because they are four different jobs. The sentinel row
+    // says so explicitly: sending someone to edit a cell Google is still computing would
+    // have them "fix" a value that is about to arrive on its own.
+    var u = matUnit(o.material);
+    var cell = o.reason === 'empty'
+        ? '<span style="color:#5f5e5a;">(empty)</span> <span style="font-size:9px;color:#5f5e5a;">not recorded</span>'
+      : o.reason === 'sentinel'
+        ? '<span style="color:#888780;">' + esc(o.raw) + '</span> <span style="font-size:9px;color:#5f5e5a;">sheet still calculating</span>'
+      : o.reason === 'zero'
+        ? '<span style="color:#FAC775;font-weight:500;">' + esc(o.raw) + '</span> <span style="font-size:9px;color:#5f5e5a;">received nothing</span>'
+      : o.reason === 'negative'
+        ? '<span style="color:#FAC775;font-weight:500;">' + esc(o.raw) + '</span> <span style="font-size:9px;color:#5f5e5a;">not a quantity</span>'
+        : '<span style="color:#FAC775;font-weight:500;">' + esc(o.raw) + '</span> <span style="font-size:9px;color:#5f5e5a;">unreadable</span>';
+    return '<tr style="border-bottom:0.5px solid #2c2c2a;">'
+      + '<td style="' + td + 'color:#e8e6e0;max-width:280px;overflow:hidden;text-overflow:ellipsis;">' + esc(o.material || '\u2014') + '</td>'
+      + '<td style="' + td + 'color:#888780;">' + esc(o.part) + '</td>'
+      + '<td style="' + td + '">' + _blendCopyCell(o.lot) + '</td>'
+      + '<td style="' + td + '">' + cell + '</td>'
+      + '<td style="' + td + 'text-align:right;color:#888780;">' + (o.start == null ? '\u2014' : fmtStockQty(o.start) + ' ' + u) + '</td>'
+      + '<td style="' + td + 'text-align:right;color:#85B7EB;">' + fmtStockQty(o.cur) + ' ' + u + '</td>'
+      + '<td style="' + td + 'color:#cfcdc7;">' + _matLocShort(o.loc) + '</td>'
+      + '<td style="' + td + 'padding-right:14px;text-align:right;color:#5f5e5a;">' + (o.received ? esc(o.received) : '\u2014') + '</td>'
+      + '</tr>';
+  }).join('');
+  return '<div style="background:#191714;border:0.5px solid #3d3524;border-left:3px solid #FAC775;border-radius:0 10px 10px 0;margin:-6px 0 14px;overflow:hidden;">'
+    + '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:10px 14px;background:#211d16;">'
+      + '<span style="font-size:11px;font-weight:500;color:#FAC775;text-transform:uppercase;letter-spacing:.04em;">Cannot be checked</span>'
+      + '<span style="font-size:11px;color:#888780;font-family:system-ui;">' + out.length + ' lot' + (out.length===1?'':'s')
+        + ' holding <span style="color:#cfcdc7;">' + kgTxt + '</span>'
+        + ' &middot; fill Original Qty Received in the Raw Material Inventory sheet to bring '
+        + (out.length===1?'it':'them') + ' into the check'
+        + (sentinels > 0
+            ? ' <span style="color:#5f5e5a;">(' + sentinels + ' of ' + (sentinels===1?'these is':'these are')
+              + ' the sheet mid-recalculation and will clear on ' + (sentinels===1?'its':'their') + ' own)</span>'
+            : '')
+      + '</span>'
+      + '<button onclick="toggleStockBlind()" style="margin-left:auto;padding:3px 10px;border-radius:5px;border:0.5px solid #3d3524;background:transparent;color:#888780;font-size:11px;cursor:pointer;font-family:system-ui;">Hide</button>'
+    + '</div>'
+    + '<div style="overflow-x:auto;max-height:320px;overflow-y:auto;"><table style="width:100%;border-collapse:collapse;background:#16150f;">'
+    + '<thead><tr style="border-bottom:0.5px solid #3d3524;">'
+      + '<th style="' + th + '">Material</th><th style="' + th + '">Part #</th><th style="' + th + '">Lot #</th>'
+      + '<th style="' + th + '">Original Qty Received cell</th>'
+      + '<th style="' + thR + '">Start of day</th><th style="' + thR + '">Current</th>'
+      + '<th style="' + th + '">Location</th>'
+      + '<th style="' + thR + 'padding-right:14px;">Received on</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+    + '</div>';
+}
+
+function toggleStockBlind() {
+  _stockBlindOpen = !_stockBlindOpen;
+  renderMaterials();
+}
+
 function expiryIssuesPanelHTML() {
   var out = [], pn, i;
   for (pn in inventoryByPart) {
@@ -13982,13 +14331,26 @@ function renderMaterials() {
   // above it is unchanged, so the toggle back is always in reach. filterMaterials() at
   // the end is safe with no table in the DOM — it guards every row lookup — and still
   // fills the segment counts and paints the active segment.
+  // Above the expiry line, which is the quieter problem of the two.
+  var _overAlert = stockOverageAlertHTML();
+  // When the alert is up the blind count rides inside it; when it is not, it needs a line
+  // of its own, or clearing the last overage would take the coverage gap off the page with
+  // it. Same shape as the Expiry data line, and it disappears when the column is complete.
+  var _blindLine = (!_overAlert && _blindCount() > 0)
+    ? '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:-4px 0 12px;font-size:11px;color:#888780;font-family:system-ui;">'
+      + '<span style="font-size:10px;font-weight:500;color:#888780;text-transform:uppercase;letter-spacing:.04em;">Stock check</span>'
+      + '<span>' + blindLinkHTML('') + ' against the quantity received</span>'
+      + '</div>'
+    : '';
+  var _overHTML = _overAlert + (_stockOveragesOpen ? stockOveragePanelHTML() : '')
+    + _blindLine + (_stockBlindOpen ? stockBlindPanelHTML() : '');
   if (matView === 'lothealth' && materialsFefoOnly) {
-    content.innerHTML = pickerHTML + _covHTML + (_expiryIssuesOpen ? expiryIssuesPanelHTML() : '')
+    content.innerHTML = pickerHTML + _overHTML + _covHTML + (_expiryIssuesOpen ? expiryIssuesPanelHTML() : '')
       + _fefoOpsPanelHTML();
     filterMaterials();
     return;
   }
-  content.innerHTML = pickerHTML + _covHTML + (_expiryIssuesOpen ? expiryIssuesPanelHTML() : '')
+  content.innerHTML = pickerHTML + _overHTML + _covHTML + (_expiryIssuesOpen ? expiryIssuesPanelHTML() : '')
     +'<div style="background:#1e2124;border:0.5px solid #2c2c2a;border-radius:12px;overflow:hidden;">'
     +'<div style="overflow-x:auto;"><table class="mat-table" style="width:100%;font-family:system-ui;table-layout:fixed;">'
     +'<colgroup>'
@@ -15752,6 +16114,9 @@ function renderProcurement() {
     // the markup is bounded, and a pure display toggle keeps the open/closed state out of
     // the render path.
     var unitsHdr = isDes ? 'Desiccants' : isNeck ? 'Neckbands' : isScoop ? 'Scoops' : 'Units';
+    // Counted here rather than re-derived later: a refresh replays _procCustOpen, so the
+    // bulk button has to render already saying Collapse all if every row came back open.
+    var custExpandable = 0, custOpen = 0;
     var custRows = cd.custBreakdown.map(function(c, ci) {
       var barW = Math.round((c.units / maxCustUnits) * 100);
       var pct = ((c.units / totalCustUnits) * 100).toFixed(1);
@@ -15798,8 +16163,9 @@ function renderProcurement() {
 
       var chev = '<span id="pcv-' + rowId + '" style="display:inline-block;color:#5f5e5a;font-size:9px;transition:transform .15s;transform:rotate(' + (open ? 90 : 0) + 'deg);margin-right:5px;">&#9654;</span>';
       var canOpen = c.products.length > 0;
+      if (canOpen) { custExpandable++; if (open) custOpen++; }
       return '<div style="padding:8px 14px;border-bottom:0.5px solid #2c2c2a;">'
-        + '<div class="proc-cust-row"' + (canOpen ? ' onclick="toggleProcCust(' + jsStr(rowId) + ')"' : '')
+        + '<div class="proc-cust-row"' + (canOpen ? ' onclick="toggleProcCust(' + jsStr(rowId) + ',' + jsStr(sid) + ')"' : '')
           + ' style="display:flex;align-items:center;gap:10px;' + (canOpen ? 'cursor:pointer;' : '') + '">'
           // 200px, not 140: the longest customer name in the feed is 24 characters
           // ("Underground Formulations", ~150px at this size) plus the chevron, and at 140
@@ -15917,11 +16283,20 @@ function renderProcurement() {
       +'<script type="application/json" id="pdata-'+sid+'">'+JSON.stringify(procDataObj)+'<\/script>'
       +'<div id="psynopsis-'+sid+'" style="padding:12px 14px;border-bottom:0.5px solid #2c2c2a;background:#141618;min-height:44px;"></div>'
       +rateStrip
-      +'<div style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-bottom:0.5px solid #2c2c2a;background:#1a1d20;">'
+      // flex-wrap so the bulk button drops to its own line on a phone rather than
+      // squeezing the segmented control; margin-left:auto pins it right on desktop.
+      +'<div style="display:flex;align-items:center;gap:6px;padding:8px 14px;border-bottom:0.5px solid #2c2c2a;background:#1a1d20;flex-wrap:wrap;">'
         +'<div style="display:flex;gap:2px;padding:3px;background:#141618;border:0.5px solid #2c2c2a;border-radius:8px;">'
           +'<button id="ptab-qtr-'+sid+'"  onclick="switchProcTab(\''+sid+'\',\'qtr\')"  style="'+navS(activeTab==='qtr')+'">By quarter</button>'
           +'<button id="ptab-cust-'+sid+'" onclick="switchProcTab(\''+sid+'\',\'cust\')" style="'+navS(activeTab==='cust')+'">By customer</button>'
         +'</div>'
+        +'<button id="pcx-'+sid+'" onclick="toggleProcAllCust('+jsStr(sid)+')"'
+          +' title="Open or close every customer\'s product list in this panel"'
+          +' style="margin-left:auto;display:'+(activeTab==='cust'&&custExpandable?'inline-flex':'none')+';align-items:center;gap:5px;font-size:11px;padding:4px 10px;border:0.5px solid #444441;border-radius:7px;background:transparent;color:#888780;cursor:pointer;font-family:system-ui;white-space:nowrap;"'
+          +' onmouseover="this.style.background=\'#252829\';this.style.color=\'#e8e6e0\'"'
+          +' onmouseout="this.style.background=\'transparent\';this.style.color=\'#888780\'">'
+          +_procExpandBtnHTML(custExpandable>0&&custOpen===custExpandable)
+        +'</button>'
       +'</div>'
       +'<div id="pcust-'+sid+'" style="display:'+(activeTab==='cust'?'block':'none')+';">'+ custSection +'</div>'
       +'<div id="pqtr-'+sid+'" style="display:'+(activeTab==='qtr'?'block':'none')+';">'+ qtrSection +'</div>'
