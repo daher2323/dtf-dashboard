@@ -45,6 +45,10 @@
   .main-tab:not(.on) .main-tab-name { color: #5f5e5a; }
   .app-bar-right { display: flex; align-items: center; gap: 8px; padding-left: 16px; border-left: 0.5px solid #2c2c2a; margin-left: auto; flex-shrink: 0; }
   .sub-bar-outer { background: #0d1118; border-bottom: 0.5px solid #1a2030; position: sticky; top: 68px; z-index: 99; }
+  /* Phone-only copy of the Last 90 days chip, under the tag (shown by the <=768px block). */
+  .cust-pace-inline { display: none; }
+  /* Phone-only "· YoY" on the Growing / Declining / Flat tag, where the chip stacks beneath it. */
+  .cust-yoy-sfx { display: none; }
   .cust-col-header-outer { background: #0d0f10; border-bottom: 0.5px solid #2c2c2a; position: sticky; top: 108px; z-index: 98; display: none; }
   .sub-divider { width: 0.5px; height: 20px; background: #2c2c2a; flex-shrink: 0; }
 
@@ -427,7 +431,10 @@
     .customer-row > :nth-child(3),
     .customer-row > :nth-child(5),
     .customer-row > :nth-child(6),
-    .customer-row > :nth-child(8) { display: none !important; }
+    .customer-row > :nth-child(8),
+    .customer-row > :nth-child(9) { display: none !important; }
+    .cust-pace-inline { display: block; margin-top: 3px; }
+    .cust-yoy-sfx { display: inline; }
 
     /* Open Orders → Summary: the two "on the books" cards stack; the aging
        bucket tiles wrap 2-up instead of overflowing off-screen. */
@@ -11646,6 +11653,20 @@ function generateSynopsis(safeId) {
       + (cd.ytdPct != null ? ', making up ' + cd.ytdPct + '% of our production YTD' : '') + '.');
   }
 
+  // ── Sentence 1b: recent pace, said in words where it contradicts the YTD figure ──
+  // The row shows both chips; this is where the two get reconciled rather than left
+  // for the reader to square. "But" only when they point opposite ways.
+  // Only the signal tier earns a sentence; a grey chip is context, not news.
+  if (cd.pace && cd.pace.state === 'signal') {
+    var pc = cd.pace, pUp = pc.chg > 0;
+    var against = (ytdChg !== null && ytdChg !== 0 && (ytdChg > 0) !== pUp) || (isNew && !pUp);
+    var pTxt = pc.last === 0
+      ? 'nothing has run in the last ' + PACE_WINDOW_DAYS + ' days, after ' + n(pc.prior) + ' units across ' + pc.priorLots + ' lots in the ' + PACE_WINDOW_DAYS + ' days before'
+      : 'over the last ' + PACE_WINDOW_DAYS + ' days volume is ' + (pUp ? 'up ' : 'down ') + Math.round(Math.abs(pc.chg) * 100) + '% compared to the ' + PACE_WINDOW_DAYS + ' days before ('
+        + n(pc.prior) + ' → ' + n(pc.last) + ' units, ' + pc.priorLots + ' → ' + pc.lastLots + ' lots)';
+    sentences.push((against ? 'But ' + pTxt : pTxt.charAt(0).toUpperCase() + pTxt.slice(1)) + '.');
+  }
+
   // ── Sentence 2: run size / lot count dynamic ──
   if (runChg !== null && Math.abs(runChg) > 4) {
     if (lotChg !== null && Math.abs(lotChg) > 4 && Math.sign(runChg) !== Math.sign(lotChg)) {
@@ -11720,6 +11741,91 @@ function safeid(s) {
   return s.replace(/[^a-zA-Z0-9]/g, '_');
 }
 
+// Recent pace: the last PACE_WINDOW_DAYS against the PACE_WINDOW_DAYS before, on rolling
+// windows that both end at complete days, never calendar quarters. A quarter in progress
+// compared against a finished one reads as a collapse three weeks in; two rolling windows
+// mean the same thing on any date. It is deliberately a different question from the YTD
+// tag: Alpha Lion is up 13.6% on last year while its last 90 days are down 48% on the 90
+// before, and both are true. Every row carries a chip, in two strengths: coloured at
+// |change| >= PACE_THRESHOLD (the "worth a call" tier), grey below it, so +39% and -39%
+// still read differently from nothing, without every row shouting. Within PACE_FLAT the
+// arrow goes sideways. A number is only printed on real evidence; otherwise the chip
+// states why there isn't one (new / few lots / restarted / no runs):
+//   - the window carrying the signal needs PACE_MIN_LOTS (the prior one for a drop, the
+//     recent one for a rise), or one run landing either side of the boundary fires it;
+//   - the customer's first-ever run must predate the prior window, or an onboarding ramp
+//     reads as acceleration (that's what the New tag is for);
+//   - a customer gone quiet (0 in the last 90 after a real prior window) is -100%: the
+//     strongest slowdown signal there is, not a missing value.
+var PACE_WINDOW_DAYS = 90;
+var PACE_THRESHOLD = 0.40;
+var PACE_MIN_LOTS = 4;
+var PACE_FLAT = 0.10;
+function _custPaceWindows(now) {
+  var t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var lastStart = new Date(t0); lastStart.setDate(t0.getDate() - (PACE_WINDOW_DAYS - 1));
+  var priorStart = new Date(lastStart); priorStart.setDate(lastStart.getDate() - PACE_WINDOW_DAYS);
+  var priorEnd = new Date(lastStart); priorEnd.setDate(lastStart.getDate() - 1);
+  var end = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate(), 23, 59, 59);
+  return { lastStart: lastStart, end: end, priorStart: priorStart, priorEnd: priorEnd };
+}
+// p: {last, prior, lastLots, priorLots, first} -> the pace object the row and synopsis
+// read. state is one of:
+//   'signal'    |change| >= PACE_THRESHOLD on enough lots: coloured, and the synopsis says it
+//   'muted'     a real number below the threshold: grey
+//   'new'       first-ever run inside the comparison window: a ramp, not a trend
+//   'thin'      under PACE_MIN_LOTS in the window carrying the change: one run would decide it
+//   'restarted' nothing in the prior window, runs in the last: no base for a percentage
+//   'idle'      nothing in either window
+// chg is set only for 'signal' and 'muted'.
+function _custPace(p, w) {
+  var base = { state: 'idle', chg: null, last: p ? p.last : 0, prior: p ? p.prior : 0, lastLots: p ? p.lastLots : 0, priorLots: p ? p.priorLots : 0 };
+  if (!p || (!(p.last > 0) && !(p.prior > 0))) return base;
+  if (!p.first || p.first >= w.priorStart) { base.state = 'new'; return base; }
+  if (!(p.prior > 0)) { base.state = 'restarted'; return base; }
+  var chg = (p.last - p.prior) / p.prior;
+  if ((chg < 0 ? p.priorLots : p.lastLots) < PACE_MIN_LOTS) { base.state = 'thin'; return base; }
+  base.chg = chg;
+  base.state = Math.abs(chg) >= PACE_THRESHOLD ? 'signal' : 'muted';
+  return base;
+}
+function _custPaceRange(a, b) {
+  var o = { month: 'short', day: 'numeric' };
+  return a.toLocaleDateString('en-US', o) + ' – ' + b.toLocaleDateString('en-US', o);
+}
+// Outlined, so it can't be read as the filled YTD tag above it; amber slowing, teal picking
+// up, again not the tag's red/green, and only at the signal tier. Everything below that is
+// grey. Carries its window on its face.
+var _PACE_REASON = {
+  'new':       ['new',       'First run falls inside the comparison window, so this would measure onboarding, not a trend.'],
+  'thin':      ['few lots',  'Fewer than ' + PACE_MIN_LOTS + ' lots in the window carrying the change, so a single run would decide the percentage.'],
+  'restarted': ['restarted', 'Nothing ran in the prior ' + PACE_WINDOW_DAYS + ' days, so there is no base for a percentage.'],
+  'idle':      ['no runs',   'Nothing ran in either window.']
+};
+// withWindow: append "· 90d". The Last 90 days column's header already names the window,
+// so only the phone copy under the tag, which has no header above it, carries it.
+function _custPaceChipHTML(pace, withWindow) {
+  if (!pace) return '';
+  var w = _custPaceWindows(new Date());
+  var tip = 'Last ' + PACE_WINDOW_DAYS + ' days (' + _custPaceRange(w.lastStart, w.end) + '): ' + pace.last.toLocaleString() + ' units, ' + pace.lastLots + ' lots\n'
+    + 'Prior ' + PACE_WINDOW_DAYS + ' days (' + _custPaceRange(w.priorStart, w.priorEnd) + '): ' + pace.prior.toLocaleString() + ' units, ' + pace.priorLots + ' lots\n\n';
+  var label, col = '#888780', bd = '#444441';
+  if (pace.chg === null) {
+    var rsn = _PACE_REASON[pace.state] || _PACE_REASON.idle;
+    label = rsn[0];
+    col = '#5f5e5a'; bd = '#2c2c2a';
+    tip += rsn[1];
+  } else {
+    var up = pace.chg > 0, flat = Math.abs(pace.chg) < PACE_FLAT;
+    label = (flat ? '&#x2192; ' : up ? '&#x2191; ' : '&#x2193; ') + Math.round(Math.abs(pace.chg) * 100) + '%';
+    if (pace.state === 'signal') { col = up ? '#5DCAA5' : '#C9A227'; bd = up ? '#0F6E56' : '#6b5514'; }
+    tip += 'Recent momentum: the last ' + PACE_WINDOW_DAYS + ' days against the ' + PACE_WINDOW_DAYS + ' before. Coloured at '
+      + Math.round(PACE_THRESHOLD * 100) + '% or more, grey below. The Growing / Declining tag compares the year to date with last year.';
+  }
+  return '<span title="' + esc(tip) + '" style="display:inline-block;font-size:10px;font-weight:500;padding:1px 6px;border-radius:5px;border:0.5px solid ' + bd + ';color:' + col + ';font-variant-numeric:tabular-nums;cursor:help;white-space:nowrap;">'
+    + label + (withWindow ? ' &middot; ' + PACE_WINDOW_DAYS + 'd' : '') + '</span>';
+}
+
 function computeCustomerData() {
   var allRowsCombined = allRows.concat(allRows25);
   var now = new Date();
@@ -11741,6 +11847,8 @@ function computeCustomerData() {
   var ytd25cutoffAll = new Date(nowYr-1, now.getMonth(), now.getDate(), 23, 59, 59);
   var ytd25startAll  = new Date(nowYr-1, 0, 1);
   var ytdStartAll    = new Date(nowYr, 0, 1);
+  var paceW = _custPaceWindows(now);
+  var custPaceRaw = {};  // cust -> {last, prior, lastLots:Set, priorLots:Set, first}
   allRowsCombined.forEach(function(r) {
     var prod = (r['Product']||'').trim(); if (!prod) return;
     var cust = prod.split('-')[0].trim(); if (!cust) return;
@@ -11760,6 +11868,10 @@ function computeCustomerData() {
     var mk = _custMonthKey(dt);
     if (!custMon[cust]) custMon[cust] = {};
     custMon[cust][mk] = (custMon[cust][mk] || 0) + num(r['Final Units']);
+    var pr0 = custPaceRaw[cust] || (custPaceRaw[cust] = { last: 0, prior: 0, lastLots: new Set(), priorLots: new Set(), first: null });
+    if (!pr0.first || dt < pr0.first) pr0.first = dt;
+    if (dt >= paceW.lastStart && dt <= paceW.end) { pr0.last += num(r['Final Units']); if (lot) pr0.lastLots.add(lot); }
+    else if (dt >= paceW.priorStart && dt < paceW.lastStart) { pr0.prior += num(r['Final Units']); if (lot) pr0.priorLots.add(lot); }
 
     // Per-product totals, accumulated in this same pass rather than per customer on demand:
     // the drill-down markup is built for EVERY customer (hidden until expanded, like Open
@@ -11898,7 +12010,9 @@ function computeCustomerData() {
     var mmap = custMon[cust] || {};
     var months = displayMonths.map(function(mk) { return { key: mk, units: mmap[mk] || 0 }; });
 
-    results.push({cust:cust, qtrs:qtrs, months:months, tag:tag, ytd:ytd, ytd25:ytd25, ytdLots:ytdLots, ytdLots25:ytdLots25, ytdPct:ytdPct, ytdPct25:ytdPct25, annuals:annuals, withData:withData, products:products});
+    var pr1 = custPaceRaw[cust];
+    var pace = _custPace(pr1 ? { last: pr1.last, prior: pr1.prior, lastLots: pr1.lastLots.size, priorLots: pr1.priorLots.size, first: pr1.first } : null, paceW);
+    results.push({cust:cust, qtrs:qtrs, months:months, tag:tag, pace:pace, ytd:ytd, ytd25:ytd25, ytdLots:ytdLots, ytdLots25:ytdLots25, ytdPct:ytdPct, ytdPct25:ytdPct25, annuals:annuals, withData:withData, products:products});
   });
 
   // Sort by YTD units descending
@@ -12107,8 +12221,8 @@ function renderCustomerOverview(healthData) {
   }
 
   // ── Column header row (sticky directly under the sub-bar: 68 + 40 = 108) ─
-  // Shared 8-column grid template: rank | customer | bars | units | lots | avg | %prod | sparkline.
-  var _gridCols = '28px 140px 1fr 80px 80px 80px 60px 40px';
+  // Shared 9-column grid template: rank | customer | bars | units | lots | avg | %prod | sparkline | last 90 days.
+  var _gridCols = '28px 140px 1fr 80px 80px 80px 60px 40px 68px';
   var _thStyle  = 'font-size:10px;color:#5f5e5a;text-transform:uppercase;letter-spacing:.04em;';
   var columnHeaderHTML = '<div class="customer-row cust-col-inline-hdr" style="position:sticky;top:108px;z-index:9;background:#141618;border-bottom:0.5px solid #2c2c2a;display:grid;grid-template-columns:'+_gridCols+';gap:12px;align-items:center;padding:14px 16px;">'
     +'<div></div>'
@@ -12119,6 +12233,10 @@ function renderCustomerOverview(healthData) {
     +'<div style="'+_thStyle+'text-align:right;">Avg run</div>'
     +'<div style="'+_thStyle+'text-align:right;">% prod</div>'
     +'<div></div>'
+    // justify-self:end + nowrap: the label is wider than its 68px track, and sized to its own
+    // text it overhangs LEFT into the empty header space above the sparkline. Sizing the track
+    // to the label instead left a wide gap between the sparkline and the figures beneath it.
+    +'<div style="'+_thStyle+'text-align:right;justify-self:end;white-space:nowrap;" title="The last '+PACE_WINDOW_DAYS+' days compared to the '+PACE_WINDOW_DAYS+' days before">Last '+PACE_WINDOW_DAYS+' days</div>'
   +'</div>';
 
   // YoY badge for row metrics: green/red/gray with ±2% steady threshold.
@@ -12262,13 +12380,18 @@ function buildBenchmarkBar(fyUnits, ytdUnits, priorPeriodUnits) {
     var expanded = !!_chExpanded[sid];
     var rank = cd.rank || (idx + 1);
 
+    // Words, not a number: the YoY % is already on the row, in the Units YTD column beside
+    // the figure it describes, and printing it twice was redundant. "· YoY" (.cust-yoy-sfx)
+    // shows on phones only: there the pace chip stacks right under the tag, and "Growing"
+    // over "↓ 48% · 90d" read as a contradiction. On desktop the chip has its own column,
+    // under its own header, so the suffix was just noise. "New" has no prior year and no suffix.
     var tagBadge = cd.tag==='growing'
-      ? '<span style="display:inline-block;font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px;background:#085041;color:#9FE1CB;">&#x2191; Growing</span>'
+      ? '<span style="display:inline-block;font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px;white-space:nowrap;background:#085041;color:#9FE1CB;">&#x2191; Growing<span class="cust-yoy-sfx"> &middot; YoY</span></span>'
       : cd.tag==='declining'
-      ? '<span style="display:inline-block;font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px;background:#791F1F;color:#F09595;">&#x2193; Declining</span>'
+      ? '<span style="display:inline-block;font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px;white-space:nowrap;background:#791F1F;color:#F09595;">&#x2193; Declining<span class="cust-yoy-sfx"> &middot; YoY</span></span>'
       : cd.tag==='flat'
-      ? '<span style="display:inline-block;font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px;background:#2c2c2a;color:#888780;">&#x2192; Flat</span>'
-      : '<span style="display:inline-block;font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px;background:#0C447C;color:#85B7EB;">New</span>';
+      ? '<span style="display:inline-block;font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px;white-space:nowrap;background:#2c2c2a;color:#888780;">&#x2192; Flat<span class="cust-yoy-sfx"> &middot; YoY</span></span>'
+      : '<span style="display:inline-block;font-size:10px;font-weight:500;padding:2px 7px;border-radius:5px;white-space:nowrap;background:#0C447C;color:#85B7EB;">New</span>';
 
     var ytdAvgRun   = cd.ytdLots   > 0 ? Math.round(cd.ytd   / cd.ytdLots)   : 0;
     var ytdAvgRun25 = cd.ytdLots25 > 0 ? Math.round(cd.ytd25 / cd.ytdLots25) : 0;
@@ -12315,6 +12438,9 @@ function buildBenchmarkBar(fyUnits, ytdUnits, priorPeriodUnits) {
       +'<div style="min-width:0;">'
         +'<div style="font-size:13px;font-weight:500;color:#e8e6e0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+esc(cd.cust)+'">'+esc(cd.cust)+'</div>'
         +'<div style="margin-top:4px;">'+tagBadge+'</div>'
+        // Phones only: the Last 90 days column is hidden there (the row keeps four tracks),
+        // so the chip rides under the tag instead, with its window spelled out.
+        +'<div class="cust-pace-inline">'+_custPaceChipHTML(cd.pace, true)+'</div>'
       +'</div>'
       // Bar comparison (2025 / 2026)
       +barsCell
@@ -12340,6 +12466,13 @@ function buildBenchmarkBar(fyUnits, ytdUnits, priorPeriodUnits) {
       +'</div>'
       // Sparkline
       +sparklineHTML
+      // Last 90 days: its own column, so the name cell stays two lines and the header names
+      // the window (the chip then doesn't have to). Same shape as the columns beside it: the
+      // figure on top (units in the window), its comparison beneath.
+      +'<div style="text-align:right;">'
+        +'<div style="font-size:12px;font-weight:500;color:#e8e6e0;font-variant-numeric:tabular-nums;" title="Units in the last '+PACE_WINDOW_DAYS+' days">'+(cd.pace && cd.pace.last ? cd.pace.last.toLocaleString() : '&#x2014;')+'</div>'
+        +'<div style="margin-top:2px;">'+_custPaceChipHTML(cd.pace)+'</div>'
+      +'</div>'
     +'</div>';
 
     // Expandable quarterly detail. Each row is now clickable when it has
@@ -12421,7 +12554,7 @@ function buildBenchmarkBar(fyUnits, ytdUnits, priorPeriodUnits) {
       + subtotalRow('2026 YTD', 'YTD', cd.ytd, cd.ytdLots, ytdAvgRun, cd.ytdPct);
 
     var custDataObj = {
-      name: cd.cust, tag: cd.tag,
+      name: cd.cust, tag: cd.tag, pace: cd.pace,
       ytd: cd.ytd, ytd25: cd.ytd25,
       ytdLots: cd.ytdLots, ytdLots25: cd.ytdLots25,
       ytdPct: cd.ytdPct, ytdPct25: cd.ytdPct25,
